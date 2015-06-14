@@ -22,9 +22,9 @@
 #include "uart.h"
 
 
-
-
 #define baudRate 9600
+#define UBRR F_CPU/16/baudRate-1
+
 //COMMAND PACKET (COMMAND)
 #define COMMAND_START_CODE_1 0x55
 #define COMMAND_START_CODE_2 0xAA
@@ -44,15 +44,15 @@ static volatile uint16_t incoming_buffer[12];	//Response packet
 
 /*##########################################################################
 UBBR->	Baud Rate Register, konektiran na down-counter -> funkcioniraju kao programmable prescaler or baud rate generator.
-		down-counter -> running at system clock (F_CPU ili fosc) is loaded with the UBRR value each time the counter has counted to zero
+		down-counter -> running at system clock (F_CPU ili fosc) is loaded with the UBRR value each time the counter 
+						has counted to zero
 						or when the UBRRL Register is written.
-						Clock ->	generiran svaki put kada counter dode do 0
-									clock = baud rate generator (BAUD) ----> 9600 zbog senzora
+		Clock ->	generiran svaki put kada counter dode do 0
+									
 Koristimo Asynchronous Normal Mode (U2X = 0)
  
 ###########################################################################*/
 
-#define UBRR F_CPU/16/baudRate-1
 //#define UART_BAUD_SELECT(baudRate, F_CPU)
 
 /*##########################################################################
@@ -74,45 +74,45 @@ Cilj response paketa bi bio da vecinom usporeduje da li je senzor dobro odgovori
 		
 ############################################################################*/
 uint8_t response_packet(uint8_t incoming_buffer[])
+{	
+	uint16_t m_primljena_rijec, buffer19[20];
+    uint8_t i, n_podatak, n_error_code;
+        
+    for( i=0; i<4; i++ )    // evaluiramo sadržaj prvih 4 primljenih 16-bit word-ova
     {
-        
-        uint16_t m_primljena_rijec, buffer19[20];
-        uint8_t i, n_podatak, n_error_code;
-        
-        for( i=0; i<4; i++ )    // evaluiramo sadržaj prvih 4 primljenih 16-bit word-ova
-             {
-            m_primljena_rijec = uart0_getc();
-            // extract/cast "data" iz error+data polja
-            n_podatak = (uint8_t)(m_primljena_rijec & 0x00FF);
-            // extract/cast "error" iz error+data polja
-            // ...nek' se nadje, mozda se pojavi 
-            n_error_code = (uint8_t)((m_primljena_rijec & 0xFF00) >> 8);
+		m_primljena_rijec = uart0_getc();
+        // extract/cast "data" iz error+data polja    
+        n_podatak = (uint8_t)(m_primljena_rijec & 0x00FF);
+        // extract/cast "error" iz error+data polja
+        // ...nek' se nadje, mozda se pojavi     
+        n_error_code = (uint8_t)((m_primljena_rijec & 0xFF00) >> 8);   
 	
-           
-            switch( n_podatak )
-                    {
-                	case COMMAND_START_CODE_1:
-                    incoming_buffer[0] = COMMAND_START_CODE_1;
-                    break;
-                case 	COMMAND_START_CODE_2:
-                    incoming_buffer[1] = COMMAND_START_CODE_2;
-                    break;
-                case 	COMMAND_DEVICE_ID_1:
-                    incoming_buffer[2] = COMMAND_DEVICE_ID_1;
-                    break;
-                case 	COMMAND_DEVICE_ID_2:
-                    incoming_buffer[3] = COMMAND_DEVICE_ID_2;
-                    break;
-                
-            }
+        switch( n_podatak )
+		{
+			case COMMAND_START_CODE_1:
+				incoming_buffer[0] = COMMAND_START_CODE_1;
+				break;
+				   
+            case COMMAND_START_CODE_2:
+                incoming_buffer[1] = COMMAND_START_CODE_2;
+                break;
+					
+            case COMMAND_DEVICE_ID_1:
+                incoming_buffer[2] = COMMAND_DEVICE_ID_1;
+                break;
+					
+            case COMMAND_DEVICE_ID_2:
+                incoming_buffer[3] = COMMAND_DEVICE_ID_2;
+                break;
+		}
 
         // ukoliko n_error_code, koji je povratni "error" podatak iz uart0_getc(), i ako sadrži više stanja
         // onda bi se mogla napraviti evaluacija stanja korištenjem switch izraza, 
         // ina?e taj error kod se može, ali i nemora, hendlati u pozivaju?oj funkciji
         
-	    }
-		return n_error_code;    // 0x00 is OK/NoERROR
 	}
+	return n_error_code;    // 0x00 is OK/NoERROR	
+}
 
 
 //Parametri za funkcjiu OPEN--> Otvara konekciju prema senzoru
@@ -146,8 +146,7 @@ void parameter_CMOSLED(uint8_t parameter[])
 		parameter[1] = 0x00;
 		parameter[2] = 0x00;
 		parameter[3] = 0x00;
-	}
-	
+	}	
 } 
 
 //Izdvaja lower_checksum (Npr; 0x01_13--->lower_byte = 0x13)
@@ -161,9 +160,7 @@ int lower_checksum(uint16_t cmd)
 int higher_checksum(uint16_t cmd)
 {
 	uint8_t higher_byte = 0;
-
 	return higher_byte = (cmd >> 8) & 0x00FF;
-
 }
 
 //Racuna checksum, zbraja sve hex brojeve ( provjera )
@@ -191,9 +188,7 @@ Ovdje se skace odmah iz maina, te se dalje grana-> racunaju se parametri, comman
 #############################################################################################*/
 void hex_polje_zbroj(uint8_t outgoing_packet[])
 {
-	
 	uint8_t parameter[4], command[2], i;
-	
 	
 	//Ovisno koji gumb pritisnemo baca nas u drugi case
 	switch (stanje)
@@ -230,12 +225,10 @@ void hex_polje_zbroj(uint8_t outgoing_packet[])
 	outgoing_packet[9] = command[1];
 	outgoing_packet[10] = lower_checksum(checksum);
 	outgoing_packet[11] = higher_checksum(checksum);
-
 }
 
 int main(void)
 {
-	
 	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Clear the bit---> 1 u 0, bez diranja ostalih bitova
 	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Set the bit---> 0 u 1, bez diranja ostalih bitova
 	//DDRA |= (1<<PA4);	//Ledica
@@ -262,20 +255,14 @@ int main(void)
 	lcd_puts("LCD is ready!!");
 	
 	uint8_t stanje2 = 0;  //Ovo je samo za key2, da mi se ne mijesa sa "stanjem" sa kojim vrtim switch case
-	
 	int i;
-	
     char buffer[50], buffer2[10];	//Sluzi za for petlju ( itoa ) da provjerim da li je dobro sastavio sve
    
-   
-	
-    while(1)
+	while(1)
     {
-
 		if(bit_is_clear(PINB, PB0))
 		{
-			stanje = 1;
-			
+			stanje = 1;		
 		}
 		
 		if(bit_is_clear(PINB, PB1))
@@ -294,10 +281,10 @@ int main(void)
 			stanje = 4;		
 		}
                
-         if(stanje == 1)
-		 {
-			 lcd_clrscr();
-			 lcd_puts("Prvo stanje");
+        if(stanje == 1)
+		{
+			lcd_clrscr();
+			lcd_puts("Prvo stanje");
 			hex_polje_zbroj(outgoing_packet);
 			
 			//UART sending
@@ -308,12 +295,10 @@ int main(void)
 			
 			//UART receiving
 			response_packet(incoming_buffer);
-
 		 }
 		 
 		 if(stanje2 == 2)
 		 {
-			 
 			 //Jednostavan ispit na lcd-u da provjerim jer je paket dobar, atm se provjerava response koji nevalja
 			 for( i = 0; i < 12; i++)
 			 {
@@ -326,32 +311,27 @@ int main(void)
 				 itoa(i,buffer2,10);  //dec
 				 lcd_gotoxy(0,1);
 				 lcd_puts(buffer2);  
-				 _delay_ms(250); 
-				 
-			 }	
-		 }
+				 _delay_ms(250);  
+			}	
+		}
 		 
-		  if(stanje == 3)
-		  {
-			 lcd_clrscr();
-			 lcd_puts("Trece stanje");
-			 hex_polje_zbroj(outgoing_packet);
+		if(stanje == 3)
+		{
+			lcd_clrscr();
+			lcd_puts("Trece stanje");
+			hex_polje_zbroj(outgoing_packet);
 			 
-			 //UART sending
+			//UART sending
 			for( i = 0; i > 12; i++)
 			{
 				uart0_putc(	outgoing_packet[i] );
 			}
-				
-			
-		  }
+		}
 		  
-		   if(stanje == 4)
-		   {
+		if(stanje == 4)
+		{
 			   
-		   }
-    }
-	
-	
-	
+		}
+	}
+
 }
