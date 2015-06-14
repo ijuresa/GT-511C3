@@ -3,6 +3,19 @@
  *
  * Created: 28/05/2015 18:49:02
  *  Author: Ivan
+ *
+ *FUSE bits set: High : 0xC9
+ *				 Low  : 0xFF
+ *
+ *CKSEL3,2,1,0	= 1
+ *SUT2,1		= 1
+ *CKOPT			= 0
+ *
+ *
+ *
+ *
+ *To DO:
+ *		Finish receive packet and try to send complete array to sensor not seperate bytes
  */ 
 
 
@@ -22,10 +35,12 @@
 #include "uart.h"
 
 
+
 #define baudRate 9600
 #define UBRR F_CPU/16/baudRate-1
-
-//COMMAND PACKET (COMMAND)
+//
+//	COMMAND PACKET (COMMAND)
+//
 #define COMMAND_START_CODE_1 0x55
 #define COMMAND_START_CODE_2 0xAA
 #define COMMAND_DEVICE_ID_1	0x01
@@ -33,59 +48,60 @@
 #define COMMAND_OPEN 0x0001
 #define COMMAND_CMOSLED 0x0012
 
-//RESPONSE PACKET (ACKNOWLEDGE)
-
+//
+//	RESPONSE PACKET (ACKNOWLEDGE)
+//		Need to put them
 
 static volatile uint16_t checksum; 
 static volatile uint8_t	stanje = 0;
 static volatile uint8_t outgoing_packet[12];		//Sending data
 static volatile uint16_t incoming_buffer[12];	//Response packet
+static volatile uint8_t flag = 0;
 
 
-/*##########################################################################
-UBBR->	Baud Rate Register, konektiran na down-counter -> funkcioniraju kao programmable prescaler or baud rate generator.
-		down-counter -> running at system clock (F_CPU ili fosc) is loaded with the UBRR value each time the counter 
-						has counted to zero
-						or when the UBRRL Register is written.
-		Clock ->	generiran svaki put kada counter dode do 0
-									
-Koristimo Asynchronous Normal Mode (U2X = 0)
- 
-###########################################################################*/
 
-//#define UART_BAUD_SELECT(baudRate, F_CPU)
+//------------------------------------------------------------------------------
+//    Name:        -
+//    Description: Functions to be implemented
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
+/*
+	
+			Here goes what needs to be implemented
 
-/*##########################################################################
-parameter_to_int(int i)---> U i-u saljemo Input Parameter, ovisno o komandi koju izvodimo.(Vecinom je 0)
+*/
 
-##########################################################################*/
-
-//RESPONSE PAKET JOS NIJE GOTOV
-/*##########################################################################
-Cilj response paketa bi bio da vecinom usporeduje da li je senzor dobro odgovorio.
-	RESPONSE_PACKET izgleda skoro isti kao i COMMAND_PACKET samo je razlika u Parametru i Response ( bivsi Command ) sve ostalo je isto.
-	Znaci on bi meni trebao vratiti:
-	0x55
-	0xAA
-	0x01
-	0x00
-	etc
-		Ova prva 4 se provjeravaju dolje. ATM vraca sve 0.
-		
-############################################################################*/
+//------------------------------------------------------------------------------
+//    Name:        response_packet
+//    Description: Receive UART packet from GT-511C3 sensor.
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
 uint8_t response_packet(uint8_t incoming_buffer[])
 {	
-	uint16_t m_primljena_rijec, buffer19[20];
+	uint16_t m_primljena_rijec[20], buffer19[20];
     uint8_t i, n_podatak, n_error_code;
         
     for( i=0; i<4; i++ )    // evaluiramo sadržaj prvih 4 primljenih 16-bit word-ova
     {
-		m_primljena_rijec = uart0_getc();
+		
+		m_primljena_rijec[i] = uart0_getc();
         // extract/cast "data" iz error+data polja    
-        n_podatak = (uint8_t)(m_primljena_rijec & 0x00FF);
+        n_podatak = (uint8_t)(m_primljena_rijec[i] & 0x00FF);
+		
+		/*
+		itoa(m_primljena_rijec[i], buffer19,16);  //hex
+		lcd_clrscr();
+		lcd_puts(buffer19);
+		_delay_ms(1000);
+		*/
+		
         // extract/cast "error" iz error+data polja
         // ...nek' se nadje, mozda se pojavi     
-        n_error_code = (uint8_t)((m_primljena_rijec & 0xFF00) >> 8);   
+        n_error_code = (uint8_t)((m_primljena_rijec[i] & 0xFF00) >> 8);   
 	
         switch( n_podatak )
 		{
@@ -115,8 +131,15 @@ uint8_t response_packet(uint8_t incoming_buffer[])
 }
 
 
-//Parametri za funkcjiu OPEN--> Otvara konekciju prema senzoru
-void parameter_calculate_OPEN(uint8_t parameter[])
+//------------------------------------------------------------------------------
+//    Name:        parameter_OPEN
+//    Description: Parameters for OPEN function. Will be removed to seperate file or be more clearly defined.
+//					Only here for testing purpose.
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
+void parameter_OPEN(uint8_t parameter[])
 {
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -125,12 +148,13 @@ void parameter_calculate_OPEN(uint8_t parameter[])
 }
 
 
-/*############################################################################
-Parametri za funkciju CMOSLED--> Trebalo bi upaliti backlight
-
-	Znaci prvotno je LED uvijek ugasena, zato prvo provjeravam da li je upaljena if(parameter[0] == 0x01).
-	
-############################################################################*/
+//------------------------------------------------------------------------------
+//    Name:        parameter_calculate_OPEN
+//    Description: Parameters for CMOSLED function.
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
 void parameter_CMOSLED(uint8_t parameter[])
 {
 	if(parameter[0] == 0x01) //Provjerava da li je upaljena
@@ -149,21 +173,42 @@ void parameter_CMOSLED(uint8_t parameter[])
 	}	
 } 
 
-//Izdvaja lower_checksum (Npr; 0x01_13--->lower_byte = 0x13)
+//------------------------------------------------------------------------------
+//    Name:        lower_checksum
+//    Description: Dividing 16_bit variable (cmd) to it's lower 8 bit value
+//					0x01_13--->lower_byte = 0x13
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
 int lower_checksum(uint16_t cmd)
 {
 	 uint8_t lower_byte = 0;
 	 return lower_byte = cmd & 0x00FF;
 }
 
-//Izdvaja higher_checksum (Npr; 0x01_13--->higher_byte = 0x01)
+//------------------------------------------------------------------------------
+//    Name:        lower_checksum
+//    Description: Dividing 16_bit variable (cmd) to it's higher 8 bit value
+//					0x01_13--->higher_byte = 0x01
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
 int higher_checksum(uint16_t cmd)
 {
 	uint8_t higher_byte = 0;
 	return higher_byte = (cmd >> 8) & 0x00FF;
 }
 
-//Racuna checksum, zbraja sve hex brojeve ( provjera )
+//------------------------------------------------------------------------------
+//    Name:        calculate_checksum
+//    Description: Summing first 10 bytes of package which is to be send via UART to sensor as lower and higher checksum
+//					Need to implement receive calculate_checksum!!!!
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
 int calculate_checksum(uint8_t parameter[], uint8_t command[])
 {
 	uint16_t checksum = 0;
@@ -181,12 +226,15 @@ int calculate_checksum(uint8_t parameter[], uint8_t command[])
 	return checksum;
 
 }
-/*########################################################################################
-Ovdje se skace odmah iz maina, te se dalje grana-> racunaju se parametri, command, checksum
-	te se sastavlja izlazni paket
 
-#############################################################################################*/
-void hex_polje_zbroj(uint8_t outgoing_packet[])
+//------------------------------------------------------------------------------
+//    Name:        hex_polje_sum
+//    Description: Assembling array of data to be send  
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
+void hex_polje_sum(uint8_t outgoing_packet[])
 {
 	uint8_t parameter[4], command[2], i;
 	
@@ -194,7 +242,7 @@ void hex_polje_zbroj(uint8_t outgoing_packet[])
 	switch (stanje)
 	{
 		case 1:
-			parameter_calculate_OPEN(parameter);
+			parameter_OPEN(parameter);
 			stanje = 0;
 			break;
 			
@@ -225,29 +273,37 @@ void hex_polje_zbroj(uint8_t outgoing_packet[])
 	outgoing_packet[9] = command[1];
 	outgoing_packet[10] = lower_checksum(checksum);
 	outgoing_packet[11] = higher_checksum(checksum);
+	
+	//Rucno saljem polje jer ne radi na uart0_putc(outgoing_packet[i] u FOR petlji
+	if(flag == 1)
+	{
+		PORTA = 1 << PA4;
+		_delay_ms(250);
+		uart0_putc(outgoing_packet[0]);
+		uart0_putc(outgoing_packet[1]);
+		uart0_putc(outgoing_packet[2]);
+		uart0_putc(outgoing_packet[3]);
+		uart0_putc(outgoing_packet[4]);
+		uart0_putc(outgoing_packet[5]);
+		uart0_putc(outgoing_packet[6]);
+		uart0_putc(outgoing_packet[7]);
+		uart0_putc(outgoing_packet[8]);
+		uart0_putc(outgoing_packet[9]);
+		uart0_putc(outgoing_packet[10]);
+		uart0_putc(outgoing_packet[11]);
+		
+		PORTA = 0 << PA4;
+		_delay_ms(250);
+		flag = 0;
+	}
 }
 
 int main(void)
 {
 	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Clear the bit---> 1 u 0, bez diranja ostalih bitova
 	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Set the bit---> 0 u 1, bez diranja ostalih bitova
-	//DDRA |= (1<<PA4);	//Ledica
-	/*
-	 MCUCR = 0x0f;
-     GICR = 0xC0;
+	DDRA |= (1<<PA4);	//LED for testing purpose (light up when UART is sending)
 
-     sei();
-	 
-	 TCCR1B = 1<<CS10 | 1<<WGM13 | 1<<WGM12;
-     TCCR1A = 1<<WGM10 | 1<<WGM11 | 1<<COM1B1 | 1<<COM1B0;
-
-     OCR1A = 7372;
-     OCR1B = 4500;
-	 */
-	 /***************************************************************************
-	Inicijalizacija UARTA ---> UBBR je 51
-	
-	****************************************************************************/
 	uart0_init(UBRR); 
 	
 	lcd_init(LCD_DISP_ON); 
@@ -257,7 +313,8 @@ int main(void)
 	uint8_t stanje2 = 0;  //Ovo je samo za key2, da mi se ne mijesa sa "stanjem" sa kojim vrtim switch case
 	int i;
     char buffer[50], buffer2[10];	//Sluzi za for petlju ( itoa ) da provjerim da li je dobro sastavio sve
-   
+	
+    sei();
 	while(1)
     {
 		if(bit_is_clear(PINB, PB0))
@@ -283,35 +340,37 @@ int main(void)
                
         if(stanje == 1)
 		{
+			flag = 1;
 			lcd_clrscr();
 			lcd_puts("Prvo stanje");
-			hex_polje_zbroj(outgoing_packet);
+			hex_polje_sum(outgoing_packet);
 			
 			//UART sending
-			for( i = 0; i > 12; i++)
-			{
-				uart0_putc(	outgoing_packet[i] );
-			}
 			
+			_delay_ms(1000);
 			//UART receiving
 			response_packet(incoming_buffer);
 		 }
 		 
 		 if(stanje2 == 2)
 		 {
+			 	
 			 //Jednostavan ispit na lcd-u da provjerim jer je paket dobar, atm se provjerava response koji nevalja
 			 for( i = 0; i < 12; i++)
 			 {
+				 
 				 lcd_clrscr();
 				 itoa(outgoing_packet[i],buffer,16);  //Provjera COMMAND paketa hex
-				 //itoa(incoming_buffer[i],buffer,16);  //hex
+				 //itoa(incoming_buffer[i],buffer,16);  //Provjera RECEIVE paketa hex
 				 lcd_gotoxy(1,0);
 				 lcd_puts(buffer); 
 				 
 				 itoa(i,buffer2,10);  //dec
 				 lcd_gotoxy(0,1);
 				 lcd_puts(buffer2);  
-				 _delay_ms(250);  
+				 _delay_ms(1000);  
+				
+				 
 			}	
 		}
 		 
@@ -319,13 +378,20 @@ int main(void)
 		{
 			lcd_clrscr();
 			lcd_puts("Trece stanje");
-			hex_polje_zbroj(outgoing_packet);
+			
+			hex_polje_sum(outgoing_packet);
 			 
 			//UART sending
 			for( i = 0; i > 12; i++)
 			{
-				uart0_putc(	outgoing_packet[i] );
+				PORTA = 1 << PA4;
+				_delay_ms(25000);
+				uart0_putc(outgoing_packet[i]);
+				
 			}
+			 
+			//UART receiving
+			response_packet(incoming_buffer);
 		}
 		  
 		if(stanje == 4)
