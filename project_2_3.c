@@ -50,14 +50,20 @@
 
 //
 //	RESPONSE PACKET (ACKNOWLEDGE)
-//		Need to put them
+//		
+#define ACK_low 0x30
+#define NACK_low 0x31 
+#define ACK_NACK_high 0x00
 
-static volatile uint16_t checksum; 
-static volatile uint8_t	stanje = 0;
-static volatile uint8_t outgoing_packet[12];		//Sending data
-static volatile uint16_t incoming_buffer[12];	//Response packet
-static volatile uint8_t flag = 0;
 
+
+uint16_t checksum; 
+
+uint8_t outgoing_packet[12];		//Sending data
+uint8_t incoming_buffer[12];		//Response packet
+uint8_t flag = 0;
+uint8_t ON_OFF_BACKLIGHT = 0;
+static volatile uint8_t stanje = 0;
 
 
 //------------------------------------------------------------------------------
@@ -80,54 +86,56 @@ static volatile uint8_t flag = 0;
 //    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
-uint8_t response_packet(uint8_t incoming_buffer[])
+void response_packet(uint8_t incoming_buffer[])
 {	
-	uint16_t m_primljena_rijec[20], buffer19[20];
-    uint8_t i, n_podatak, n_error_code;
+	uint16_t m_primljena_rijec[12];
+    uint8_t i, n_podatak[12], n_error_code;
         
-    for( i=0; i<4; i++ )    // evaluiramo sadržaj prvih 4 primljenih 16-bit word-ova
+    for( i=0; i<12; i++ )    //Input Array | dividing low and high bits and putting data into input array
     {
 		
 		m_primljena_rijec[i] = uart0_getc();
+		
         // extract/cast "data" iz error+data polja    
-        n_podatak = (uint8_t)(m_primljena_rijec[i] & 0x00FF);
+        n_podatak[i] = (uint8_t)(m_primljena_rijec[i] & 0x00FF);
 		
-		/*
-		itoa(m_primljena_rijec[i], buffer19,16);  //hex
-		lcd_clrscr();
-		lcd_puts(buffer19);
-		_delay_ms(1000);
-		*/
-		
-        // extract/cast "error" iz error+data polja
-        // ...nek' se nadje, mozda se pojavi     
+        // extract/cast "error" iz error+data polja   
         n_error_code = (uint8_t)((m_primljena_rijec[i] & 0xFF00) >> 8);   
-	
-        switch( n_podatak )
-		{
-			case COMMAND_START_CODE_1:
-				incoming_buffer[0] = COMMAND_START_CODE_1;
-				break;
-				   
-            case COMMAND_START_CODE_2:
-                incoming_buffer[1] = COMMAND_START_CODE_2;
-                break;
-					
-            case COMMAND_DEVICE_ID_1:
-                incoming_buffer[2] = COMMAND_DEVICE_ID_1;
-                break;
-					
-            case COMMAND_DEVICE_ID_2:
-                incoming_buffer[3] = COMMAND_DEVICE_ID_2;
-                break;
-		}
-
-        // ukoliko n_error_code, koji je povratni "error" podatak iz uart0_getc(), i ako sadrži više stanja
-        // onda bi se mogla napraviti evaluacija stanja korištenjem switch izraza, 
-        // ina?e taj error kod se može, ali i nemora, hendlati u pozivaju?oj funkciji
-        
+		PORTA = 1 << PA4;
+		_delay_ms(250);
+		incoming_buffer[i] = n_podatak[i];
+		
+//         switch( n_podatak )
+// 		{
+// 			case COMMAND_START_CODE_1:
+// 				incoming_buffer[0] = COMMAND_START_CODE_1;
+// 				break;
+// 				   
+//             case COMMAND_START_CODE_2:
+//                 incoming_buffer[1] = COMMAND_START_CODE_2;
+//                 break;
+// 					
+//             case COMMAND_DEVICE_ID_1:
+//                 incoming_buffer[2] = COMMAND_DEVICE_ID_1;
+//                 break;
+// 					
+//             case COMMAND_DEVICE_ID_2:
+//                 incoming_buffer[3] = COMMAND_DEVICE_ID_2;
+//                 break;
+// 				
+// 			case ACK_low:
+// 				incoming_buffer[8] = ACK_low;
+// 				break;
+// 			
+// 			case NACK_low:
+// 				incoming_buffer[8] = NACK_low;
+// 				break;
+// 		}   
+		
+		PORTA = 0 << PA4;
+		_delay_ms(250); 
 	}
-	return n_error_code;    // 0x00 is OK/NoERROR	
+
 }
 
 
@@ -141,7 +149,7 @@ uint8_t response_packet(uint8_t incoming_buffer[])
 //------------------------------------------------------------------------------
 void parameter_OPEN(uint8_t parameter[])
 {
-	parameter[0] = 0x00;
+	parameter[0] = 0x01;
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
@@ -157,20 +165,20 @@ void parameter_OPEN(uint8_t parameter[])
 //------------------------------------------------------------------------------
 void parameter_CMOSLED(uint8_t parameter[])
 {
-	if(parameter[0] == 0x01) //Provjerava da li je upaljena
+	if(ON_OFF_BACKLIGHT == 0)
 	{
-		parameter[0] = 0x00;		//Ugasit ce je	
-		parameter[1] = 0x00;
-		parameter[2] = 0x00;
-		parameter[3] = 0x00;
+		parameter[0] = 0x01;
+		ON_OFF_BACKLIGHT = 1;		
 	}
-	else						
+	else
 	{
-		parameter[0] = 0x01;		//Upalit ce je	
-		parameter[1] = 0x00;
-		parameter[2] = 0x00;
-		parameter[3] = 0x00;
-	}	
+		parameter[0] = 0x00;
+		ON_OFF_BACKLIGHT = 0;		
+	}
+	parameter[1] = 0x00;
+	parameter[2] = 0x00;	
+	parameter[3] = 0x00;
+	
 } 
 
 //------------------------------------------------------------------------------
@@ -236,26 +244,28 @@ int calculate_checksum(uint8_t parameter[], uint8_t command[])
 //------------------------------------------------------------------------------
 void hex_polje_sum(uint8_t outgoing_packet[])
 {
-	uint8_t parameter[4], command[2], i;
+	uint8_t parameter[4], command[2];
 	
 	//Ovisno koji gumb pritisnemo baca nas u drugi case
 	switch (stanje)
 	{
 		case 1:
-			parameter_OPEN(parameter);
 			stanje = 0;
+			parameter_OPEN(parameter);
+			command[0] = lower_checksum(COMMAND_OPEN);
+			command[1] = higher_checksum(COMMAND_OPEN);
+			
 			break;
 			
 		case 3:
+			stanje = 0;
 			parameter_CMOSLED(parameter);
-			stanje = 0;		
+			command[0] = lower_checksum(COMMAND_CMOSLED);
+			command[1] = higher_checksum(COMMAND_CMOSLED);
+					
 			break;	
 	}
-	
-	//Rastavljanje command
-	command[0] = lower_checksum(COMMAND_OPEN);
-	command[1] = higher_checksum(COMMAND_OPEN);
-	
+		
 	//Racunanje checksum-a
 	checksum = calculate_checksum(parameter, command);
 	
@@ -311,6 +321,7 @@ int main(void)
 	lcd_puts("LCD is ready!!");
 	
 	uint8_t stanje2 = 0;  //Ovo je samo za key2, da mi se ne mijesa sa "stanjem" sa kojim vrtim switch case
+	
 	int i;
     char buffer[50], buffer2[10];	//Sluzi za for petlju ( itoa ) da provjerim da li je dobro sastavio sve
 	
@@ -340,16 +351,17 @@ int main(void)
                
         if(stanje == 1)
 		{
+		
 			flag = 1;
 			lcd_clrscr();
 			lcd_puts("Prvo stanje");
 			hex_polje_sum(outgoing_packet);
 			
-			//UART sending
 			
 			_delay_ms(1000);
 			//UART receiving
 			response_packet(incoming_buffer);
+			_delay_ms(1000);
 		 }
 		 
 		 if(stanje2 == 2)
@@ -376,22 +388,18 @@ int main(void)
 		 
 		if(stanje == 3)
 		{
+			
+			flag = 1;
 			lcd_clrscr();
 			lcd_puts("Trece stanje");
 			
 			hex_polje_sum(outgoing_packet);
-			 
-			//UART sending
-			for( i = 0; i > 12; i++)
-			{
-				PORTA = 1 << PA4;
-				_delay_ms(25000);
-				uart0_putc(outgoing_packet[i]);
-				
-			}
+			 _delay_ms(1000);
+			
 			 
 			//UART receiving
 			response_packet(incoming_buffer);
+			_delay_ms(1000);
 		}
 		  
 		if(stanje == 4)
