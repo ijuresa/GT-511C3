@@ -15,7 +15,7 @@
  *
  *
  *To DO:
- *		Finish receive packet and try to send complete array to sensor not seperate bytes
+ *		
  */ 
 
 
@@ -38,32 +38,73 @@
 
 #define baudRate 9600
 #define UBRR F_CPU/16/baudRate-1
+
+#define COMMAND_START_CODE_1 0x55	//Static byte to mark the beginning of a command packet
+#define COMMAND_START_CODE_2 0xAA	//Static byte to mark the beginning of a command packet
+#define COMMAND_DEVICE_ID_1	0x01	//Device ID byte - lower	
+#define COMMAND_DEVICE_ID_2	0x00	//Device ID byte - higher	
+
 //
 //	COMMAND PACKET (COMMAND)
 //
-#define COMMAND_START_CODE_1 0x55
-#define COMMAND_START_CODE_2 0xAA
-#define COMMAND_DEVICE_ID_1	0x01
-#define COMMAND_DEVICE_ID_2	0x00
-#define COMMAND_OPEN 0x0001
-#define COMMAND_CMOSLED 0x0012
+
+#define COMMAND_OPEN 0x0001					//Open Initialization
+#define COMMAND_CMOSLED 0x0012				//CMOSLED control (backlight)
+#define GET_ENROLL_COUNT 0x0020				//Get enrolled fingerprint count
+#define CHECK_ENROLLED 0x0021				//Check whether the specified ID is already enrolled
+#define ENROLL_START 0x0022					//Start and enrollment
+#define ENROLL_1 0x0023						//Make 1st template for an enrollment
+#define ENROLL_2 0x0024						//Make 2nd template for an enrollment
+#define ENROLL_3 0x0025						//Make 3rd template for an enrollment, merge three templates into one template, save merged template to the database
+#define IS_PRESS_FINGER 0x0026				//Check is finger is placed on the sensor
+#define DELETE_ID 0x0040					//Delete the fingerprint with the specified ID
+#define DELETE_ALL 0x0041					//Delete all fingerprints from the database
+#define VERIFY 0x0051						//1:1 Verification of the capture fingerprint image with the specified ID
+#define ID_IDENTIFY 0x0051					//1:N Identification of the capture fingerprint image with the database
+#define VERIFY_TEMPLATE 0x0052				//1:1 Verification of a fingerprint template with the database
+#define IDENTIFY_TEMPLATE 0x0053			//1:N Identification of a fingerprint template with the database
+#define CAPTURE_FINGER 0x0060				//Capture a fingerprint image(256x256) from the sensor
+#define MAKE_TEMPLATE 0x0061				//Make template for transmission
 
 //
-//	RESPONSE PACKET (ACKNOWLEDGE)
+//	RESPONSE PACKET (ACKNOWLEDGE) ->8 and 9th byte
 //		
 #define ACK_low 0x30
 #define NACK_low 0x31 
 #define ACK_NACK_high 0x00
 
+//
+//ERROR CODES - When response packet is NACK
+//	
+#define NACK_TIMEOUT 0x1001					//Obsolete, Capture timeout
+#define NACK_INVALID_BAUDRATE 0x1002		//Obsolete, Invalid serial baud rate
+#define NACK_INVALID_POS 0x1003				//The specified ID is not between 0-199
+#define NACK_IS_NOT_USED 0x1004				//The specified ID is not used
+#define NACK_IS_ALREADY_USED 0x1005			//The specified ID is already used
+#define NACK_COMM_ERR 0x1006				//Communication error
+#define NACK_VERIFY_FAILED 0x1007			//1:1 Verification failure
+#define NACK_IDENTIFY_FAILED 0x1008			//1:N Identification failure
+#define NACK_DB_IS_FULL 0x1009				//The database is full
+#define NACK_DB_IS_EMPTY 0x100A				//The database is empty
+#define NACK_TURN_ERR 0x100B				//Obsolete, Invalid order of enrollment (The order was not as: ENROLL_START->ENROLL_1->ENROLL_2->ENROLL_3)
+#define NACK_BAD_FINGER 0x100C				//Too bad fingerprint
+#define NACK_ENROLL_FAILED 0x100D			//Enrollment failure
+#define NACK_IS_NOT_SUPPORTED 0x100E		//The specified command is not supported
+#define NACK_DEV_ERR 0x100F					//Device error, especially if Crypto_chip is trouble
+#define NACK_CAPTURE_CANCELED 0x1010		//Obsolete, The capturing is canceled
+#define NACK_INVALID_PARAM 0x1011			//Invalid parameter
+#define NACK_FINGER_IS_NOT_PRESSED 0x1012	//Finger is not pressed
+//#define DUPLICATED_ID	0-199				//There is duplicated fingerprint (While enrollment or setting template), this error describes just duplicated ID
 
 
-uint16_t checksum; 
 
+
+/*  Variables  */
+uint16_t checksum;					//Variable for checksum
 uint8_t outgoing_packet[12];		//Sending data
 uint8_t incoming_buffer[12];		//Response packet
-uint8_t flag = 0;
-uint8_t ON_OFF_BACKLIGHT = 0;
-static volatile uint8_t stanje = 0;
+uint8_t ON_OFF_BACKLIGHT = 0;		//Always off on begining
+static volatile uint8_t stanje = 0;	//Used for keys
 
 
 //------------------------------------------------------------------------------
@@ -80,64 +121,64 @@ static volatile uint8_t stanje = 0;
 */
 
 //------------------------------------------------------------------------------
-//    Name:        response_packet
+//    Name:        UART_send_packet
+//    Description: Sending packet via UART to sensor.
+//    Input:       -
+//    Output:      LED blinks when data is sent
+//    Misc:		   -
+//------------------------------------------------------------------------------
+
+void UART_send_packet(uint8_t outgoing_packet[])
+{
+	uint8_t i;
+	PORTA = 1 << PA4;
+	_delay_ms(250);
+	
+	//Actually sending array via UART to sensor
+	for(i = 0; i < 12; i++)
+	{
+		uart0_putc(outgoing_packet[i]);
+	}
+	
+	PORTA = 0 << PA4;
+	_delay_ms(250);
+}
+
+
+//------------------------------------------------------------------------------
+//    Name:        UART_response_packet
 //    Description: Receive UART packet from GT-511C3 sensor.
 //    Input:       -
 //    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
-void response_packet(uint8_t incoming_buffer[])
+void UART_response_packet(uint8_t incoming_buffer[])
 {	
-	uint16_t m_primljena_rijec[12];
-    uint8_t i, n_podatak[12], n_error_code;
+	uint16_t n_data_plus_error[12]; //16 bit data array for data + error response
+    uint8_t i, n_data[12], n_error_code;
         
     for( i=0; i<12; i++ )    //Input Array | dividing low and high bits and putting data into input array
     {
 		
-		m_primljena_rijec[i] = uart0_getc();
+		n_data_plus_error[i] = uart0_getc();
 		
-        // extract/cast "data" iz error+data polja    
-        n_podatak[i] = (uint8_t)(m_primljena_rijec[i] & 0x00FF);
+        // extract/cast "data" from error+data array -> Lower 8 bits
+        n_data[i] = (uint8_t)(n_data_plus_error[i] & 0x00FF);
 		
-        // extract/cast "error" iz error+data polja   
-        n_error_code = (uint8_t)((m_primljena_rijec[i] & 0xFF00) >> 8);   
+        // extract/cast "error" from error+data array -> higher 8 bits  
+        n_error_code = (uint8_t)((n_data_plus_error[i] & 0xFF00) >> 8);  
+		 
 		PORTA = 1 << PA4;
 		_delay_ms(250);
-		incoming_buffer[i] = n_podatak[i];
 		
-//         switch( n_podatak )
-// 		{
-// 			case COMMAND_START_CODE_1:
-// 				incoming_buffer[0] = COMMAND_START_CODE_1;
-// 				break;
-// 				   
-//             case COMMAND_START_CODE_2:
-//                 incoming_buffer[1] = COMMAND_START_CODE_2;
-//                 break;
-// 					
-//             case COMMAND_DEVICE_ID_1:
-//                 incoming_buffer[2] = COMMAND_DEVICE_ID_1;
-//                 break;
-// 					
-//             case COMMAND_DEVICE_ID_2:
-//                 incoming_buffer[3] = COMMAND_DEVICE_ID_2;
-//                 break;
-// 				
-// 			case ACK_low:
-// 				incoming_buffer[8] = ACK_low;
-// 				break;
-// 			
-// 			case NACK_low:
-// 				incoming_buffer[8] = NACK_low;
-// 				break;
-// 		}   
+		//Putting response data into our array
+		incoming_buffer[i] = n_data[i];
 		
 		PORTA = 0 << PA4;
 		_delay_ms(250); 
 	}
 
 }
-
 
 //------------------------------------------------------------------------------
 //    Name:        parameter_OPEN
@@ -232,7 +273,6 @@ int calculate_checksum(uint8_t parameter[], uint8_t command[])
 	checksum += command[1];
 
 	return checksum;
-
 }
 
 //------------------------------------------------------------------------------
@@ -249,6 +289,7 @@ void hex_polje_sum(uint8_t outgoing_packet[])
 	//Ovisno koji gumb pritisnemo baca nas u drugi case
 	switch (stanje)
 	{
+		//When we press key1 sensor opens communication
 		case 1:
 			stanje = 0;
 			parameter_OPEN(parameter);
@@ -258,6 +299,7 @@ void hex_polje_sum(uint8_t outgoing_packet[])
 			break;
 			
 		case 3:
+		//When we press key3 sensor turns ON/OFF backlight ( CMOSLED )
 			stanje = 0;
 			parameter_CMOSLED(parameter);
 			command[0] = lower_checksum(COMMAND_CMOSLED);
@@ -266,11 +308,11 @@ void hex_polje_sum(uint8_t outgoing_packet[])
 			break;	
 	}
 		
-	//Racunanje checksum-a
+	//Checksum calculation -> outgoing_packet[0] + .... + outgoing_packet[9] = Checksum
 	checksum = calculate_checksum(parameter, command);
 	
 	
-	//Paket koji saljem UART-om prema senzoru
+	//Data packet which is to be sent by UART to sensor
 	outgoing_packet[0] = COMMAND_START_CODE_1;
 	outgoing_packet[1] = COMMAND_START_CODE_2;
 	outgoing_packet[2] = COMMAND_DEVICE_ID_1;
@@ -284,48 +326,31 @@ void hex_polje_sum(uint8_t outgoing_packet[])
 	outgoing_packet[10] = lower_checksum(checksum);
 	outgoing_packet[11] = higher_checksum(checksum);
 	
-	//Rucno saljem polje jer ne radi na uart0_putc(outgoing_packet[i] u FOR petlji
-	if(flag == 1)
-	{
-		PORTA = 1 << PA4;
-		_delay_ms(250);
-		uart0_putc(outgoing_packet[0]);
-		uart0_putc(outgoing_packet[1]);
-		uart0_putc(outgoing_packet[2]);
-		uart0_putc(outgoing_packet[3]);
-		uart0_putc(outgoing_packet[4]);
-		uart0_putc(outgoing_packet[5]);
-		uart0_putc(outgoing_packet[6]);
-		uart0_putc(outgoing_packet[7]);
-		uart0_putc(outgoing_packet[8]);
-		uart0_putc(outgoing_packet[9]);
-		uart0_putc(outgoing_packet[10]);
-		uart0_putc(outgoing_packet[11]);
-		
-		PORTA = 0 << PA4;
-		_delay_ms(250);
-		flag = 0;
-	}
 }
 
 int main(void)
 {
-	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Clear the bit---> 1 u 0, bez diranja ostalih bitova
-	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Set the bit---> 0 u 1, bez diranja ostalih bitova
+	//Used for buttons
+	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Clear the bit---> 1 u 0, without touching other bits
+	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Set the bit---> 0 u 1, without touching other bits
 	DDRA |= (1<<PA4);	//LED for testing purpose (light up when UART is sending)
-
+	
+	//UART initialization 
 	uart0_init(UBRR); 
 	
+	//Getting LCD ready
 	lcd_init(LCD_DISP_ON); 
 	lcd_clrscr();
 	lcd_puts("LCD is ready!!");
 	
-	uint8_t stanje2 = 0;  //Ovo je samo za key2, da mi se ne mijesa sa "stanjem" sa kojim vrtim switch case
+	uint8_t stanje2 = 0;  //Used for testing purpose with KEY2
 	
 	int i;
-    char buffer[50], buffer2[10];	//Sluzi za for petlju ( itoa ) da provjerim da li je dobro sastavio sve
+    char buffer[50], buffer2[10];	//Used for itoa() function, to check if sending/response packet is good
 	
+	//Enabling global interrupts
     sei();
+	
 	while(1)
     {
 		if(bit_is_clear(PINB, PB0))
@@ -352,28 +377,30 @@ int main(void)
         if(stanje == 1)
 		{
 		
-			flag = 1;
+			
 			lcd_clrscr();
 			lcd_puts("Prvo stanje");
 			hex_polje_sum(outgoing_packet);
 			
+			//UART sending
+			UART_send_packet(outgoing_packet);
+			_delay_ms(1000);
 			
-			_delay_ms(1000);
 			//UART receiving
-			response_packet(incoming_buffer);
-			_delay_ms(1000);
+			UART_response_packet(incoming_buffer);
+	
 		 }
 		 
 		 if(stanje2 == 2)
 		 {
 			 	
-			 //Jednostavan ispit na lcd-u da provjerim jer je paket dobar, atm se provjerava response koji nevalja
+			 //Output to LCD for testing purpose
 			 for( i = 0; i < 12; i++)
 			 {
 				 
 				 lcd_clrscr();
-				 itoa(outgoing_packet[i],buffer,16);  //Provjera COMMAND paketa hex
-				 //itoa(incoming_buffer[i],buffer,16);  //Provjera RECEIVE paketa hex
+				 itoa(outgoing_packet[i],buffer,16);  //COMMAND packet check (outgoing ) in HEX
+				 //itoa(incoming_buffer[i],buffer,16);  //RESPONSE packet check (incoming ) in HEX
 				 lcd_gotoxy(1,0);
 				 lcd_puts(buffer); 
 				 
@@ -381,25 +408,27 @@ int main(void)
 				 lcd_gotoxy(0,1);
 				 lcd_puts(buffer2);  
 				 _delay_ms(1000);  
-				
-				 
+
 			}	
 		}
 		 
 		if(stanje == 3)
 		{
 			
-			flag = 1;
+			
 			lcd_clrscr();
 			lcd_puts("Trece stanje");
 			
 			hex_polje_sum(outgoing_packet);
-			 _delay_ms(1000);
 			
+			
+			 //UART sending
+			 UART_send_packet(outgoing_packet);
+			 _delay_ms(1000);
 			 
 			//UART receiving
-			response_packet(incoming_buffer);
-			_delay_ms(1000);
+			UART_response_packet(incoming_buffer);
+			
 		}
 		  
 		if(stanje == 4)
