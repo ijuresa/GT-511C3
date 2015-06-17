@@ -1,16 +1,30 @@
 /*
- * GT_511_lib.c
+ * GT_511_lib.h
  *
- * Created: 16/06/2015 13:50:09
+ * Created: 17/06/2015 14:17:28
  *  Author: Ivan
  */ 
 
 
-#include <stdint.h>
+#ifndef GT_511_LIB_H_
+#define GT_511_LIB_H_
+
+
+/* Includes */
 #include <avr/io.h>
-#include <avr/io.h>
+#include <util/delay.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include "lcd.h"
+#include "uart.h"
+
+
+
+
+
+
 
 
 #define COMMAND_START_CODE_1 0x55	//Static byte to mark the beginning of a command packet
@@ -22,11 +36,11 @@
 //	COMMAND PACKET (COMMAND)
 //
 
-#define COMMAND_OPEN 0x0001					//Open Initialization
-#define COMMAND_CMOSLED 0x0012				//CMOSLED control (backlight)
+#define OPEN 0x0001					//Open Initialization
+#define CMOSLED 0x0012				//CMOSLED control (backlight)
 #define GET_ENROLL_COUNT 0x0020				//Get enrolled fingerprint count
 #define CHECK_ENROLLED 0x0021				//Check whether the specified ID is already enrolled
-#define ENROLL_START 0x0022					//Start and enrollment
+#define ENROLL_START 0x0022					//Start an enrollment
 #define ENROLL_1 0x0023						//Make 1st template for an enrollment
 #define ENROLL_2 0x0024						//Make 2nd template for an enrollment
 #define ENROLL_3 0x0025						//Make 3rd template for an enrollment, merge three templates into one template, save merged template to the database
@@ -50,6 +64,15 @@
 //
 //ERROR CODES - When response packet is NACK
 //
+
+// struct defines
+// {
+// 	uint16_t error[20];
+// 	uint8_t high[20];
+// 	uint8_t low[20];
+// 	};
+
+#define NO_ERROR 0x0000						//No error
 #define NACK_TIMEOUT 0x1001					//Obsolete, Capture timeout
 #define NACK_INVALID_BAUDRATE 0x1002		//Obsolete, Invalid serial baud rate
 #define NACK_INVALID_POS 0x1003				//The specified ID is not between 0-199
@@ -70,3 +93,12 @@
 #define NACK_FINGER_IS_NOT_PRESSED 0x1012	//Finger is not pressed
 //#define DUPLICATED_ID	0-199				//There is duplicated fingerprint (While enrollment or setting template), this error describes just duplicated ID
 
+
+
+/* Macros, to allow use of legacy names */
+
+
+
+
+
+#endif /* GT_511_LIB_H_ */
