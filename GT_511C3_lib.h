@@ -36,8 +36,8 @@
 //	COMMAND PACKET (COMMAND)
 //
 
-#define OPEN 0x0001					//Open Initialization
-#define CMOSLED 0x0012				//CMOSLED control (backlight)
+#define OPEN 0x0001							//Open Initialization
+#define CMOSLED 0x0012						//CMOSLED control (backlight)
 #define GET_ENROLL_COUNT 0x0020				//Get enrolled fingerprint count
 #define CHECK_ENROLLED 0x0021				//Check whether the specified ID is already enrolled
 #define ENROLL_START 0x0022					//Start an enrollment

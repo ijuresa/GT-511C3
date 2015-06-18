@@ -18,10 +18,9 @@
  *		
  */ 
 
-
-
+/* Clock */
 #ifndef F_CPU
-#define F_CPU 8000000UL							//Clock
+#define F_CPU 8000000UL							
 #endif
 
 
@@ -36,10 +35,11 @@
 #include "uart.h"
 #include "GT_511C3_lib.h"
 
+
+/* Operating BAUDRATE */
 #define baudRate 9600
+/* Calculation used to calculate UBBR */
 #define UBRR F_CPU/16/baudRate-1
-
-
 
 
 /*  Variables  */
@@ -51,26 +51,9 @@ uint8_t ON_OFF_BACKLIGHT = 0;		//Always off on begining
 static volatile uint8_t stanje = 0;	//Used for keys
 
 
-
-
-//------------------------------------------------------------------------------
-//    Name:        -
-//    Description: Functions to be implemented
-//    Input:       -
-//    Output:      -
-//    Misc:		   -
-//------------------------------------------------------------------------------
-/*
-	
-			Here goes what needs to be implemented
-
-*/
-
-
-
 //------------------------------------------------------------------------------
 //    Name:        parameter_from_int
-//    Description: Integer to hex
+//    Description: Integer to hex for sending packages.
 //    Input:       -
 //    Output:      -
 //    Misc:		   -
@@ -81,6 +64,26 @@ void parameter_from_int(uint8_t i)
 	parameter[1] = ( i & 0x0000FF00 ) >> 8;
 	parameter[2] = ( i & 0x00FF0000 ) >> 16;
 	parameter[3] = ( i & 0xFF000000 ) >> 24;
+}
+
+//------------------------------------------------------------------------------
+//    Name:        int_from_parameter
+//    Description: Hex to integer for receive packages.
+//    Input:       -
+//    Output:      -
+//    Misc:		   -
+//------------------------------------------------------------------------------
+int int_from_parameter()
+{
+	uint8_t return_parameter = 0;
+	
+	return_parameter = ( return_parameter << 8) + parameter[3];
+	return_parameter = ( return_parameter << 8) + parameter[2];
+	return_parameter = ( return_parameter << 8) + parameter[1];
+	return_parameter = ( return_parameter << 8) + parameter[0];
+	
+	return return_parameter;
+	
 }
 
 //------------------------------------------------------------------------------
@@ -110,7 +113,7 @@ int calculate_checksum(uint8_t parameter[], uint8_t command[])
 
 //------------------------------------------------------------------------------
 //    Name:        assemble_data_packet
-//    Description: Assembling data packet to be sent
+//    Description: Assembling data packet to be sent.
 //    Input:       -
 //    Output:      -
 //    Misc:		   -
@@ -141,17 +144,21 @@ void assemble_data_packet()
 //    Name:        check_enrolled
 //    Description: Check whether the specified ID is already enrolled, we search for the empty one so we can enroll there
 //    Input:       -
-//    Output:      -
+//    Output:      Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
-void check_enrolled(uint8_t ID)
+int check_enrolled(uint8_t ID)
 {
-	parameter_from_int(ID);
+	/* Only here for testing purpose */
+	uint8_t buffer10[20];
 	
-					
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(CHECK_ENROLLED);
 	command[1] = get_hight_byte(CHECK_ENROLLED);
 	
+	/* Sending current ID to function which transforms integer to hex and puts it into parameter[3,2,1,0] package */
+	parameter_from_int(ID);
+
 	assemble_data_packet();
 	
 	//UART sending
@@ -160,16 +167,29 @@ void check_enrolled(uint8_t ID)
 	
 	//UART receiving
 	UART_response_packet(incoming_buffer);
-	lcd_clrscr();
-	//ACK, which means that this ID is already used so we need to search for new one
-	if(incoming_buffer[8] == 0x30)
-	{
-		lcd_puts("This ID is already\nEnrolled");
-		ID++;
-		check_enrolled(ID);
-	}
 	
-	else case_error(incoming_buffer);
+	/* ONly here for checking purpose will be removed */
+	itoa(incoming_buffer[9],buffer10,10);  //dec
+	lcd_gotoxy(0,1);
+	lcd_puts(buffer10);
+	_delay_ms(1000);
+	
+	/* Checking if my incoming buffer if 0x30 which is ACK_low defined. Need to finish this but it WORKS!*/ 
+	if( incoming_buffer[8] == ACK_low)
+	{
+		//case_error(incoming_buffer);
+		ID = ID +1;
+		itoa(ID,buffer10,10);  //dec
+		lcd_gotoxy(0,1);
+		lcd_puts(buffer10);  
+		_delay_ms(1000); 
+		return 0;
+	}
+	/* Else we are returning which error is received */
+	else {
+		case_error();
+		return 1;
+	}
 
 }
 
@@ -177,15 +197,17 @@ void check_enrolled(uint8_t ID)
 //    Name:        enroll_start
 //    Description: Start an enrollment
 //    Input:       -
-//    Output:      -
+//    Output:      Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_start(uint8_t ID)
 {
-	parameter_from_int(ID);
-	
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ENROLL_START);
 	command[1] = get_hight_byte(ENROLL_START);
+	
+	/* Sending current ID to function which transforms integer to hex and puts it into parameter[3,2,1,0] package */
+	parameter_from_int(ID);
 	
 	assemble_data_packet();
 	
@@ -205,18 +227,19 @@ void enroll_start(uint8_t ID)
 //    Name:        enroll_1
 //    Description: Make 1st template for an enrollment
 //    Input:       -
-//    Output:      -
+//    Output:      Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_1()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+	command[0] = get_low_byte(ENROLL_1);
+	command[1] = get_hight_byte(ENROLL_1);
+	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
-	
-	command[0] = get_low_byte(ENROLL_1);
-	command[1] = get_hight_byte(ENROLL_1);
 	
 	assemble_data_packet();
 	
@@ -231,23 +254,24 @@ void enroll_1()
 	case_error(incoming_buffer);
 }
 
-
 //------------------------------------------------------------------------------
 //    Name:        enroll_2
 //    Description: Make 2nd template for an enrollment
 //    Input:       -
-//    Output:      -
+//    Output:      Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_2()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+	command[0] = get_low_byte(ENROLL_2);
+	command[1] = get_hight_byte(ENROLL_2);
+	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
 	
-	command[0] = get_low_byte(ENROLL_2);
-	command[1] = get_hight_byte(ENROLL_2);
 	
 	assemble_data_packet();
 	
@@ -266,18 +290,19 @@ void enroll_2()
 //    Name:        enroll_3
 //    Description: Make 3rd template for an enrollment, merge three templates into one template, save merged template to the database
 //    Input:       -
-//    Output:      -
+//    Output:       Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_3()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+	command[0] = get_low_byte(ENROLL_3);
+	command[1] = get_hight_byte(ENROLL_3);
+	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
-	
-	command[0] = get_low_byte(ENROLL_3);
-	command[1] = get_hight_byte(ENROLL_3);
 	
 	assemble_data_packet();
 	
@@ -296,19 +321,19 @@ void enroll_3()
 //    Name:			is_press_finger
 //    Description:	Check is finger is placed on the sensor
 //    Input:       -
-//    Output:      -
+//    Output:       Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int is_press_finger()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+	command[0] = get_low_byte(IS_PRESS_FINGER);
+	command[1] = get_hight_byte(IS_PRESS_FINGER);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
-	
-	command[0] = get_low_byte(IS_PRESS_FINGER);
-	command[1] = get_hight_byte(IS_PRESS_FINGER);
 	
 	assemble_data_packet();
 	
@@ -322,19 +347,21 @@ int is_press_finger()
 	//Error--> Message output
 	case_error(incoming_buffer);
 	
+	/* If 4th place in incoming package isn't 0x00 then finger isn't pressed */ 
 	if(incoming_buffer[4] == 0x00) return 1;
 	else return 0;
 }
 
 //------------------------------------------------------------------------------
 //    Name:        capture_finger
-//    Description: 		
+//    Description: Captures finger which is pressed onto sensor ( ATM set to capture best quality image )		
 //    Input:       -
-//    Output:      -
+//    Output:      Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void capture_finger()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(CAPTURE_FINGER);
 	command[1] = get_hight_byte(CAPTURE_FINGER);
 	
@@ -351,18 +378,18 @@ void capture_finger()
 	
 	//Error--> Message output
 	case_error(incoming_buffer);
-	
 }
 
 //------------------------------------------------------------------------------
 //    Name:        ID_identify
-//    Description: 
+//    Description: Checks if fingerprint is already in database
 //    Input:       -
-//    Output:      -
+//    Output:      Verified ID ( if fingerprint is verified ) and "Finger not found"
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void ID_identify(uint8_t ID)
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ID_IDENTIFY);
 	command[1] = get_hight_byte(ID_IDENTIFY);
 	
@@ -384,6 +411,8 @@ void ID_identify(uint8_t ID)
 	case_error(incoming_buffer);
 	
 	lcd_clrscr();
+	
+	/* If parameter is 0 then fingerprint is found in databse*/ 
 	if(incoming_buffer[5] == 0x00)
 	{
 		lcd_puts("Verified ID");
@@ -393,20 +422,21 @@ void ID_identify(uint8_t ID)
 
 //------------------------------------------------------------------------------
 //    Name:        delete_all
-//    Description: 
+//    Description: Deletes all fingerprints from database---> Need to implement some sort of security check
 //    Input:       -
-//    Output:      -
+//    Output:      Error message ( Still need to check which ones )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void delete_all()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+	command[0] = get_low_byte(DELETE_ALL);
+	command[1] = get_hight_byte(DELETE_ALL);
+	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
-	
-	command[0] = get_low_byte(DELETE_ALL);
-	command[1] = get_hight_byte(DELETE_ALL);
 	
 	assemble_data_packet();
 	
@@ -424,15 +454,55 @@ void delete_all()
 
 
 //------------------------------------------------------------------------------
-//    Name:        open
-//    Description: Parameters for OPEN function. Will be removed to different file or be more clearly defined.
-//					Only here for testing purpose.
+//    Name:        get_enroll_count
+//    Description: Returns number of fingerprints in database ( still need to finish )
 //    Input:       -
-//    Output:      -
+//    Output:      Number of enrolled fingerprints, Error message ( Still need to check which ones )
 //    Misc:		   -
+//------------------------------------------------------------------------------
+int get_enroll_count(uint8_t ID)
+{
+	/* Buffer11[20] is here only for testing purpose */
+	uint8_t buffer11[20];
+	
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+	command[0] = get_low_byte(GET_ENROLL_COUNT);
+	command[1] = get_hight_byte(GET_ENROLL_COUNT);
+	
+	parameter[0] = 0x00;
+	parameter[1] = 0x00;
+	parameter[2] = 0x00;
+	parameter[3] = 0x00;
+	
+	assemble_data_packet();
+
+	//UART sending
+	UART_send_packet(outgoing_packet);
+	_delay_ms(1000);
+	
+	//UART receiving
+	UART_response_packet(incoming_buffer);
+		
+	//Error--> Message output
+	case_error(incoming_buffer);
+	
+	
+// 	if(new_ID == 0) { ID = 1; return ID;}
+// 	else ID = new_ID + 1; return ID;
+	 	
+}
+
+
+//------------------------------------------------------------------------------
+//    Name:        open
+//    Description: Parameters and command for OPEN function. Used to open connection to sensor.
+//    Input:       -
+//    Output:      Error message ( Still need to check which ones )
+//    Misc:		   It's used only once. In main program.
 //------------------------------------------------------------------------------
 void open()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(OPEN);
 	command[1] = get_hight_byte(OPEN);
 	
@@ -449,35 +519,39 @@ void open()
 			
 	//UART receiving
 	UART_response_packet(incoming_buffer);	
-	
 }
 
 //------------------------------------------------------------------------------
 //    Name:			cmosled       
 //    Description:	Parameters and commands for cmosled command
 //    Input:       -
-//    Output:      -
+//    Output:       LED ON or OFF, Initially it's always OFF
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void cmosled()
 {
+	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(CMOSLED);
 	command[1] = get_hight_byte(CMOSLED);
 	
+	/* If LED is OFF then we turn her ON --> Need to implement this code better!!*/ 
 	if(ON_OFF_BACKLIGHT == 0)
 	{
 		parameter[0] = 0x01;
 		ON_OFF_BACKLIGHT = 1;		
 	}
+	/* IF LED is ON we turn her OFF */
 	else
 	{
 		parameter[0] = 0x00;
 		ON_OFF_BACKLIGHT = 0;		
 	}
+	/* Rest of parameters are same for ON and OFF state */
 	parameter[1] = 0x00;
 	parameter[2] = 0x00;	
 	parameter[3] = 0x00;	
 	
+	/* Assembling data packet */
 	assemble_data_packet();
 	
 	 //UART sending
@@ -492,33 +566,55 @@ void cmosled()
 //------------------------------------------------------------------------------
 //    Name:        hex_polje_sum
 //    Description: Assembling array of data to be send  
-//    Input:       -
-//    Output:      -
+//    Input:       Key input ( ATM 4 keys )
+//    Output:      1->Enrollment
+//				   2->Delete all fingerprints from database
+//				   3->Returning number of fingerprinsts in database
+//				   4->Checking if fingerprint is in database ( Verification )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 {
 	
-	
-	//Depends which button we press
+	/* Depends which button we press */
 	switch (stanje)
 	{
-		//Trying to enroll finger
+		/* Enrolling new fingerprint into database */
 		case 1:
 			stanje = 0;
-			check_enrolled(ID);																//Check for an ID slot that is unused until u find one:
-			enroll_start(ID);																	//Start and enrollment with that ID
- 			while( is_press_finger() == 0 ) _delay_ms(100);									//Wait while finger is pressed
-			capture_finger();																//Capture fingerprint in high quality
-			enroll_1();																		//1st Enrollment
-			while( is_press_finger() == 1 ) lcd_puts("\nRemove finger"); _delay_ms(100);	//Wait while finger is removed
-			while( is_press_finger() == 0 ) _delay_ms(100);									//Wait while finger is pressed again for 2nd enrollment
-			capture_finger();																//Capture fingerprint in high quality
-			enroll_2();																		//2nd Enrollment
-			while( is_press_finger() == 1 ) lcd_puts("\nRemove finger"); _delay_ms(100);	//Wait while finger is removed
-			while( is_press_finger() == 0 ) _delay_ms(100);									//Wait while finger is pressed again for 2nd enrollment
-			capture_finger();																//Capture fingerprint in high quality
-			enroll_3();																		//3rd Enrollment
+			/* Counting number of fingerprints in database */
+			//get_enroll_count(ID);
+					
+			/* Check for an ID slot that is unused until u find one:	*/											
+			while( check_enrolled(ID) == 0 )ID ++; _delay_ms(100);
+			//Start and enrollment with that ID							
+			enroll_start(ID);
+			/* Wait while finger is pressed */																
+ 			while( is_press_finger() == 0 ) _delay_ms(100);	
+			/* Capture fingerprint in high quality */ 								
+			capture_finger();
+			
+			/* 1st Enrollment */																
+			enroll_1();	
+			/* Wait while finger is removed */																	
+			while( is_press_finger() == 1 ) lcd_puts("\nRemove finger"); _delay_ms(100);
+			/* Wait while finger is pressed again for 2nd enrollment */	
+			while( is_press_finger() == 0 ) _delay_ms(100);	
+			/* Capture fingerprint in high quality */								
+			capture_finger();	
+			
+			/* 2nd Enrollment */															
+			enroll_2();
+			/* Wait while finger is removed */																		
+			while( is_press_finger() == 1 ) lcd_puts("\nRemove finger"); _delay_ms(100);
+			/* Wait while finger is pressed again for 3nd enrollment */	
+			while( is_press_finger() == 0 ) _delay_ms(100);	
+			/* Capture fingerprint in high quality */								
+			capture_finger();
+			
+			/* 3rd Enrollment */																
+			enroll_3();
+			/* Output if enrollment was succesful --> Need to change later */																		
 			lcd_puts("\nEnrollment was successful");											
 
 			break;
@@ -528,16 +624,20 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			delete_all();
 			break;
 			
-		//When we press key3 sensor turns ON/OFF backlight ( CMOSLED ) 
+		
 		case 3:
 			stanje = 0;
-			cmosled();		
+			/*  Only here for testing purpose will be removed later */ 
+			get_enroll_count(ID);		
 			break;	
-			
+		/* When key 4 is pressed identification of fingerprint will begin */	
 		case 4:
 			stanje = 0;
+			/* Checking if finger is pressed */
 			while( is_press_finger() == 0) _delay_ms(100);
+			/* Capturing fingerprint so we can match it with fingerprints in database */
 			capture_finger();
+			/* Verification of our fingerprint, returns 1 or 0. */
 			ID_identify(ID);
 			
 	}
@@ -546,9 +646,12 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 int main(void)
 {
 	//Used for buttons
-	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Clear the bit---> 1 u 0, without touching other bits
-	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); //Set the bit---> 0 u 1, without touching other bits
-	DDRA |= (1 << PA4 | 1 << PA5);	//LED for testing purpose (light up when UART is sending)
+	//Clear the bit---> 1 u 0, without touching other bits
+	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); 
+	//Set the bit---> 0 u 1, without touching other bits
+	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3);
+	//LED for testing purpose (light up when UART is sending or receiving)
+	DDRA |= (1 << PA4 | 1 << PA5);	
 	
 	//UART initialization 
 	uart0_init(UBRR); 
@@ -559,15 +662,17 @@ int main(void)
 	lcd_puts("LCD is ready!!");
 	
 	uint8_t i;
-	uint8_t ID = 0;						//ID number for fingerprint count
+	//ID number for fingerprint count
+	uint8_t ID = 0;						
 	
-
-    char buffer[50], buffer2[10];	//Used for itoa() function, to check if sending/response packet is good
+	//Used for itoa() function, to check if sending/response packet is good
+    char buffer[50], buffer2[10];	
 	
 	//Enabling global interrupts
     sei();
 	
-	open(); // On startup command OPEN is executed once
+	// On startup command OPEN is executed once
+	open(); 
 	
 	while(1)
     {
@@ -639,6 +744,9 @@ int main(void)
 			lcd_puts("Cetvrto stanje");
 			hex_polje_sum(outgoing_packet, ID);
 			
+			
+			
+			/* Speaker , will be used when fingerprint is not found in database.*/
 // 			   PORTA = 0 << PA5;
 // 			   _delay_ms(1);
 // 			   PORTA = 1 << PA5;
