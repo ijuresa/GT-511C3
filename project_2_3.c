@@ -14,8 +14,8 @@
  *
  *
  *
- *To DO:
- *		
+ *To DO: Return UART send and receive to main file. Divide function for sensor to lib.h and lib.c
+ *		 Implement Delete 1 ID from database and make menu with LCD. (Probably will be 6 keys)	
  */ 
 
 /* Clock */
@@ -38,6 +38,7 @@
 
 /* Operating BAUDRATE */
 #define baudRate 9600
+
 /* Calculation used to calculate UBBR */
 #define UBRR F_CPU/16/baudRate-1
 
@@ -142,15 +143,13 @@ void assemble_data_packet()
 
 //------------------------------------------------------------------------------
 //    Name:        check_enrolled
-//    Description: Check whether the specified ID is already enrolled, we search for the empty one so we can enroll there
+//    Description: Check whether the specified ID is already enrolled if it is then we search for empty one.
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      ACK( Already used ) or NACK( Not used or ID is not between 0-199 )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int check_enrolled(uint8_t ID)
 {
-	/* Only here for testing purpose */
-	uint8_t buffer10[20];
 	
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(CHECK_ENROLLED);
@@ -161,36 +160,27 @@ int check_enrolled(uint8_t ID)
 
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
-	
-	/* ONly here for checking purpose will be removed */
-	itoa(incoming_buffer[9],buffer10,10);  //dec
-	lcd_gotoxy(0,1);
-	lcd_puts(buffer10);
-	_delay_ms(1000);
 	
 	/* Checking if my incoming buffer if 0x30 which is ACK_low defined. Need to finish this but it WORKS!*/ 
 	if( incoming_buffer[8] == ACK_low)
 	{
-		//case_error(incoming_buffer);
-		ID = ID +1;
-		itoa(ID,buffer10,10);  //dec
-		lcd_gotoxy(0,1);
-		lcd_puts(buffer10);  
-		_delay_ms(1000); 
+		/* Error--> Message output */
+		case_error(incoming_buffer);
 		return 0;
 	}
 	/* Else we are returning which error is received */
-	else {
-		case_error();
+	else 
+	{
+		/* Error--> Message output */
+		case_error(incoming_buffer);
 		return 1;
 	}
-
 }
 
 //------------------------------------------------------------------------------
@@ -211,16 +201,15 @@ void enroll_start(uint8_t ID)
 	
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
-		
 }
 
 //------------------------------------------------------------------------------
@@ -243,14 +232,14 @@ void enroll_1()
 	
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 }
 
@@ -272,17 +261,16 @@ void enroll_2()
 	parameter[2] = 0x00;
 	parameter[3] = 0x00;
 	
-	
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 }
 
@@ -306,14 +294,14 @@ void enroll_3()
 	
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 }
 
@@ -337,17 +325,17 @@ int is_press_finger()
 	
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 	
-	/* If 4th place in incoming package isn't 0x00 then finger isn't pressed */ 
+	/* If 4th (parameter[0]) place in incoming package isn't 0x00 then finger isn't pressed */ 
 	if(incoming_buffer[4] == 0x00) return 1;
 	else return 0;
 }
@@ -369,14 +357,14 @@ void capture_finger()
 	
 	assemble_data_packet();
 
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 			
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);	
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 }
 
@@ -400,24 +388,38 @@ void ID_identify(uint8_t ID)
 	
 	assemble_data_packet();
 
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 	
 	lcd_clrscr();
 	
-	/* If parameter is 0 then fingerprint is found in databse*/ 
+	/* If parameter is 0 then fingerprint is found in database*/ 
 	if(incoming_buffer[5] == 0x00)
 	{
 		lcd_puts("Verified ID");
+		/* Servo motor LEFT */
+// 		DDRD = (1 << PD5);
+// 		OCR1A = ICR1 - 53;
+// 		_delay_ms(100);
+// 		DDRD |= (0 << PD5);	
 	}
-	else lcd_puts("Finger not found");
+	else
+	{
+		 lcd_puts("Finger not found");
+		 /* Servo motor RIGHT */
+// 		 DDRD = (1 << PD5);
+// 		 OCR1A = ICR1 - 25;
+// 		 _delay_ms(100);
+// 		 DDRD |= (0 << PD5);	
+	}
+	
 }
 
 //------------------------------------------------------------------------------
@@ -440,14 +442,14 @@ void delete_all()
 	
 	assemble_data_packet();
 	
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 		
 }
@@ -457,7 +459,7 @@ void delete_all()
 //    Name:        get_enroll_count
 //    Description: Returns number of fingerprints in database ( still need to finish )
 //    Input:       -
-//    Output:      Number of enrolled fingerprints, Error message ( Still need to check which ones )
+//    Output:      Number of enrolled fingerprints or "The database is empty"
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int get_enroll_count(uint8_t ID)
@@ -476,16 +478,20 @@ int get_enroll_count(uint8_t ID)
 	
 	assemble_data_packet();
 
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 	
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 		
-	//Error--> Message output
+	/* Error--> Message output */
 	case_error(incoming_buffer);
 	
+	/* Number of enrolled IDs - output */
+	lcd_clrscr();
+	lcd_puts("Enrolled IDs = \n");
+	lcd_puts(itoa(incoming_buffer[4], buffer11, 10));
 	
 // 	if(new_ID == 0) { ID = 1; return ID;}
 // 	else ID = new_ID + 1; return ID;
@@ -513,11 +519,11 @@ void open()
 	
 	assemble_data_packet();
 
-	//UART sending
+	/* UART sending */
 	UART_send_packet(outgoing_packet);
 	_delay_ms(1000);
 			
-	//UART receiving
+	/* UART receiving */
 	UART_response_packet(incoming_buffer);	
 }
 
@@ -554,11 +560,11 @@ void cmosled()
 	/* Assembling data packet */
 	assemble_data_packet();
 	
-	 //UART sending
+	/* UART sending */
 	 UART_send_packet(outgoing_packet);
 	 _delay_ms(1000);
 	 
-	 //UART receiving
+	/* UART receiving */
 	 UART_response_packet(incoming_buffer);
 } 
 
@@ -621,14 +627,14 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 		
 		case 2:
 			stanje = 0;
-			delete_all();
+			get_enroll_count(ID);
 			break;
 			
 		
 		case 3:
 			stanje = 0;
 			/*  Only here for testing purpose will be removed later */ 
-			get_enroll_count(ID);		
+			cmosled();		
 			break;	
 		/* When key 4 is pressed identification of fingerprint will begin */	
 		case 4:
@@ -643,6 +649,7 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 	}
 }
 
+
 int main(void)
 {
 	//Used for buttons
@@ -651,8 +658,22 @@ int main(void)
 	//Set the bit---> 0 u 1, without touching other bits
 	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3);
 	//LED for testing purpose (light up when UART is sending or receiving)
-	DDRA |= (1 << PA4 | 1 << PA5);	
+	DDRA |= (1 << PA4 | 1 << PA5);
+	/* Servo is initially OFF */
+	DDRD |= (0 << PD5);	
+
+	/* Inverted Mode */ 
+	TCCR1A |= 1<<WGM11 | 1<<COM1A1 | 1<<COM1A0;
 	
+	/* Fast PWM mode 14, Prescaler = 256 */ 
+	TCCR1B |= 1<<WGM13 | 1<<WGM12 | 1<<CS12;
+	
+	/* Top of the counter count */
+	ICR1 = 625;
+
+	/**/ 
+	OCR1A = ICR1 - 65;
+
 	//UART initialization 
 	uart0_init(UBRR); 
 	
@@ -676,6 +697,7 @@ int main(void)
 	
 	while(1)
     {
+		
 		if(bit_is_clear(PINB, PB0))
 		{
 			stanje = 1;		
@@ -711,22 +733,6 @@ int main(void)
 			lcd_puts("Drugo stanje");
 			hex_polje_sum(outgoing_packet, ID);
 			
-			
-			// Output to LCD for testing purpose
-// 			 for( i = 0; i < 12; i++)
-// 			 {			 
-// 				 lcd_clrscr();
-// 				 // itoa(outgoing_packet[i],buffer,16);  //COMMAND packet check (outgoing ) in HEX
-// 				 itoa(incoming_buffer[i],buffer,16);  //RESPONSE packet check (incoming ) in HEX
-// 				 lcd_gotoxy(1,0);
-// 				 lcd_puts(buffer); 
-// 				 
-// 				
-// 				itoa(i,buffer2,10);  //dec
-// 				lcd_gotoxy(0,1);
-// 				lcd_puts(buffer2);  
-// 				_delay_ms(1000);  
-// 			}	
 		}
 		 
 		if(stanje == 3)
