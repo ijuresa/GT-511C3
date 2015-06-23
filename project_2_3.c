@@ -52,6 +52,68 @@ uint8_t ON_OFF_BACKLIGHT = 0;		//Always off on begining
 static volatile uint8_t stanje = 0;	//Used for keys
 
 
+
+//------------------------------------------------------------------------------
+//    Name:        UART_send_packet
+//    Description: Sending packet via UART to sensor.
+//    Input:       -
+//    Output:      LED blinks when data is sent
+//    Misc:		   -
+//------------------------------------------------------------------------------
+void UART_send_packet(uint8_t outgoing_packet[])
+{
+	uint8_t i;
+	PORTA = 1 << PA4;
+	_delay_ms(250);
+	
+	//Actually sending array via UART to sensor
+	for(i = 0; i < 12; i++)
+	{
+		uart0_putc(outgoing_packet[i]);
+	}
+	
+	PORTA = 0 << PA4;
+	_delay_ms(250);
+}
+
+//------------------------------------------------------------------------------
+//    Name:        UART_response_packet
+//    Description: Receive UART packet from GT-511C3 sensor.
+//    Input:       -
+//    Output:      After every receive led blinks, only for checking purpose
+//    Misc:		   -
+//------------------------------------------------------------------------------
+void UART_response_packet(uint8_t incoming_buffer[])
+{
+	uint16_t n_data_plus_error[12]; //16 bit data array for data + error response
+	uint8_t i, n_data[12], n_error_code;
+	
+	PORTA = 1 << PA4;
+	_delay_ms(250);
+	for( i=0; i<12; i++ )    //Input Array | dividing low and high bits and putting data into input array
+	{
+		
+		n_data_plus_error[i] = uart0_getc();
+		
+		// extract/cast "data" from error+data array -> Lower 8 bits
+		n_data[i] = (uint8_t)(n_data_plus_error[i] & 0x00FF);
+		
+		// extract/cast "error" from error+data array -> higher 8 bits
+		n_error_code = (uint8_t)((n_data_plus_error[i] & 0xFF00) >> 8);
+		
+		
+		
+		//Putting response data into our array
+		incoming_buffer[i] = n_data[i];
+		
+		
+	}
+	PORTA = 0 << PA4;
+	_delay_ms(250);
+}
+
+
+
 //------------------------------------------------------------------------------
 //    Name:        parameter_from_int
 //    Description: Integer to hex for sending packages.
