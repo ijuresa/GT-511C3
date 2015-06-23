@@ -150,36 +150,44 @@ void assemble_data_packet()
 //------------------------------------------------------------------------------
 int check_enrolled(uint8_t ID)
 {
-	
-	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
-	command[0] = get_low_byte(CHECK_ENROLLED);
-	command[1] = get_hight_byte(CHECK_ENROLLED);
-	
-	/* Sending current ID to function which transforms integer to hex and puts it into parameter[3,2,1,0] package */
-	parameter_from_int(ID);
-
-	assemble_data_packet();
-	
-	/* UART sending */
-	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
-	
-	/* UART receiving */
-	UART_response_packet(incoming_buffer);
-	
-	/* Checking if my incoming buffer if 0x30 which is ACK_low defined. Need to finish this but it WORKS!*/ 
-	if( incoming_buffer[8] == ACK_low)
+	if( ON_OFF_BACKLIGHT == 0 )
 	{
-		/* Error--> Message output */
-		case_error(incoming_buffer);
-		return 0;
+		lcd_clrscr();
+		lcd_puts("Press key 3\nFor Backlight");
+		return -1;
 	}
-	/* Else we are returning which error is received */
-	else 
+	else
 	{
-		/* Error--> Message output */
-		case_error(incoming_buffer);
-		return 1;
+		/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+		command[0] = get_low_byte(CHECK_ENROLLED);
+		command[1] = get_hight_byte(CHECK_ENROLLED);
+	
+		/* Sending current ID to function which transforms integer to hex and puts it into parameter[3,2,1,0] package */
+		parameter_from_int(ID);
+
+		assemble_data_packet();
+	
+		/* UART sending */
+		UART_send_packet(outgoing_packet);
+		_delay_ms(1000);
+	
+		/* UART receiving */
+		UART_response_packet(incoming_buffer);
+	
+		/* Checking if my incoming buffer if 0x30 which is ACK_low defined. Need to finish this but it WORKS!*/ 
+		if( incoming_buffer[8] == ACK_low)
+		{
+			/* Error--> Message output */
+			case_error(incoming_buffer);
+			return 0;
+		}
+		/* Else we are returning which error is received */
+		else 
+		{
+			/* Error--> Message output */
+			case_error(incoming_buffer);
+			return 1;
+		}
 	}
 }
 
@@ -301,8 +309,17 @@ void enroll_3()
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
+	/* When enrollment is successful response packet is ACK (0x0030) */
+	if( incoming_buffer[8] == ACK_low )
+	{
+		lcd_clrscr();
+		lcd_puts("Enrollment was \nSuccessful");
+	}
+	
 	/* Error--> Message output */
-	case_error(incoming_buffer);
+	else case_error(incoming_buffer);
+
+
 }
 
 //------------------------------------------------------------------------------
@@ -314,30 +331,44 @@ void enroll_3()
 //------------------------------------------------------------------------------
 int is_press_finger()
 {
-	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
-	command[0] = get_low_byte(IS_PRESS_FINGER);
-	command[1] = get_hight_byte(IS_PRESS_FINGER);
+	if( ON_OFF_BACKLIGHT == 0 )
+	{
+		lcd_clrscr();
+		lcd_puts("Press key 3\nFor Backlight");
+		return -1;
+	}
+	else
+	{
+		/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
+		command[0] = get_low_byte(IS_PRESS_FINGER);
+		command[1] = get_hight_byte(IS_PRESS_FINGER);
 	
-	parameter[0] = 0x00;
-	parameter[1] = 0x00;
-	parameter[2] = 0x00;
-	parameter[3] = 0x00;
+		parameter[0] = 0x00;
+		parameter[1] = 0x00;
+		parameter[2] = 0x00;
+		parameter[3] = 0x00;
 	
-	assemble_data_packet();
+		assemble_data_packet();
 	
-	/* UART sending */
-	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+		/* UART sending */
+		UART_send_packet(outgoing_packet);
+		_delay_ms(1000);
 	
-	/* UART receiving */
-	UART_response_packet(incoming_buffer);
+		/* UART receiving */
+		UART_response_packet(incoming_buffer);
+		
+		/* Error--> Message output */
+		case_error(incoming_buffer);
 	
-	/* Error--> Message output */
-	case_error(incoming_buffer);
-	
-	/* If 4th (parameter[0]) place in incoming package isn't 0x00 then finger isn't pressed */ 
-	if(incoming_buffer[4] == 0x00) return 1;
-	else return 0;
+		/* If 4th (parameter[0]) place in incoming package is 0x00 then finger is pressed */ 
+		if(incoming_buffer[4] == 0x00)
+		{
+			lcd_clrscr();
+			lcd_puts("Remove finger");
+			return 1;
+		} 
+		else return 0;
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -377,6 +408,7 @@ void capture_finger()
 //------------------------------------------------------------------------------
 void ID_identify(uint8_t ID)
 {
+	uint8_t i;
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ID_IDENTIFY);
 	command[1] = get_hight_byte(ID_IDENTIFY);
@@ -412,7 +444,16 @@ void ID_identify(uint8_t ID)
 	}
 	else
 	{
-		 lcd_puts("Finger not found");
+		lcd_puts("Finger not found");
+		for(i = 0; i < 200; i++)
+		{
+			/* Speaker , will be used when fingerprint is not found in database.*/
+			PORTA = 0 << PA5;
+			_delay_ms(1);
+			PORTA = 1 << PA5;
+			_delay_ms(1);
+		}
+
 		 /* Servo motor RIGHT */
 // 		 DDRD = (1 << PD5);
 // 		 OCR1A = ICR1 - 25;
@@ -544,13 +585,17 @@ void cmosled()
 	if(ON_OFF_BACKLIGHT == 0)
 	{
 		parameter[0] = 0x01;
-		ON_OFF_BACKLIGHT = 1;		
+		ON_OFF_BACKLIGHT = 1;	
+		lcd_clrscr();
+		lcd_puts("Backlight is ON!");	
 	}
 	/* IF LED is ON we turn her OFF */
 	else
 	{
 		parameter[0] = 0x00;
-		ON_OFF_BACKLIGHT = 0;		
+		ON_OFF_BACKLIGHT = 0;
+		lcd_clrscr();
+		lcd_puts("Backlight is OFF!");		
 	}
 	/* Rest of parameters are same for ON and OFF state */
 	parameter[1] = 0x00;
@@ -562,7 +607,7 @@ void cmosled()
 	
 	/* UART sending */
 	 UART_send_packet(outgoing_packet);
-	 _delay_ms(1000);
+	_delay_ms(1000);
 	 
 	/* UART receiving */
 	 UART_response_packet(incoming_buffer);
@@ -590,7 +635,9 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			stanje = 0;
 			/* Counting number of fingerprints in database */
 			//get_enroll_count(ID);
-					
+			
+			/* Check if LED is OFF */
+			if( check_enrolled(ID) == -1) break;
 			/* Check for an ID slot that is unused until u find one:	*/											
 			while( check_enrolled(ID) == 0 )ID ++; _delay_ms(100);
 			//Start and enrollment with that ID							
@@ -603,7 +650,7 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			/* 1st Enrollment */																
 			enroll_1();	
 			/* Wait while finger is removed */																	
-			while( is_press_finger() == 1 ) lcd_puts("\nRemove finger"); _delay_ms(100);
+			while( is_press_finger() == 1 ) lcd_puts("Remove finger"); _delay_ms(100);
 			/* Wait while finger is pressed again for 2nd enrollment */	
 			while( is_press_finger() == 0 ) _delay_ms(100);	
 			/* Capture fingerprint in high quality */								
@@ -612,17 +659,14 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			/* 2nd Enrollment */															
 			enroll_2();
 			/* Wait while finger is removed */																		
-			while( is_press_finger() == 1 ) lcd_puts("\nRemove finger"); _delay_ms(100);
+			while( is_press_finger() == 1 ) lcd_puts("Remove finger"); _delay_ms(100);
 			/* Wait while finger is pressed again for 3nd enrollment */	
 			while( is_press_finger() == 0 ) _delay_ms(100);	
 			/* Capture fingerprint in high quality */								
 			capture_finger();
 			
 			/* 3rd Enrollment */																
-			enroll_3();
-			/* Output if enrollment was succesful --> Need to change later */																		
-			lcd_puts("\nEnrollment was successful");											
-
+			enroll_3();									
 			break;
 		
 		case 2:
@@ -636,15 +680,24 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			/*  Only here for testing purpose will be removed later */ 
 			cmosled();		
 			break;	
+			
 		/* When key 4 is pressed identification of fingerprint will begin */	
 		case 4:
 			stanje = 0;
+			/* Check if LED is OFF */
+			if( is_press_finger() == -1) break;
 			/* Checking if finger is pressed */
 			while( is_press_finger() == 0) _delay_ms(100);
 			/* Capturing fingerprint so we can match it with fingerprints in database */
 			capture_finger();
 			/* Verification of our fingerprint, returns 1 or 0. */
 			ID_identify(ID);
+			break;
+			
+		case 5:
+			stanje = 0;
+			delete_all();
+			break;
 			
 	}
 }
@@ -652,12 +705,12 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 
 int main(void)
 {
-	//Used for buttons
-	//Clear the bit---> 1 u 0, without touching other bits
-	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3); 
-	//Set the bit---> 0 u 1, without touching other bits
-	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3);
-	//LED for testing purpose (light up when UART is sending or receiving)
+	/* Used for buttons */
+	/* Clear the bit---> 1 u 0, without touching other bits */
+	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3 | 1 << PB4); 
+	/* Set the bit---> 0 u 1, without touching other bits */
+	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3 | 1 << PB4);
+	/* LED for testing purpose (light up when UART is sending or receiving) */
 	DDRA |= (1 << PA4 | 1 << PA5);
 	/* Servo is initially OFF */
 	DDRD |= (0 << PD5);	
@@ -674,25 +727,23 @@ int main(void)
 	/**/ 
 	OCR1A = ICR1 - 65;
 
-	//UART initialization 
+	/* UART initialization */ 
 	uart0_init(UBRR); 
 	
-	//Getting LCD ready
+	/* Getting LCD ready */
 	lcd_init(LCD_DISP_ON); 
 	lcd_clrscr();
 	lcd_puts("LCD is ready!!");
 	
-	uint8_t i;
-	//ID number for fingerprint count
+
+	/* ID number for fingerprint count */
 	uint8_t ID = 0;						
+
 	
-	//Used for itoa() function, to check if sending/response packet is good
-    char buffer[50], buffer2[10];	
-	
-	//Enabling global interrupts
+	/* Enabling global interrupts */
     sei();
 	
-	// On startup command OPEN is executed once
+	/* On startup command OPEN is executed once */
 	open(); 
 	
 	while(1)
@@ -716,6 +767,11 @@ int main(void)
 		if(bit_is_clear(PINB, PB3))
 		{
 			stanje = 4;		
+		}
+		
+		if(bit_is_clear(PINB, PB4))
+		{
+			stanje = 5;
 		}
                
         if(stanje == 1)
@@ -745,18 +801,17 @@ int main(void)
 		
 		if(stanje == 4)
 		{
-			
 			lcd_clrscr();
 			lcd_puts("Cetvrto stanje");
 			hex_polje_sum(outgoing_packet, ID);
+		}
+		
+		if(stanje == 5)
+		{
+			lcd_clrscr();
+			lcd_puts("Peto stanje");
 			
-			
-			
-			/* Speaker , will be used when fingerprint is not found in database.*/
-// 			   PORTA = 0 << PA5;
-// 			   _delay_ms(1);
-// 			   PORTA = 1 << PA5;
-// 			   _delay_ms(1);
+			hex_polje_sum(outgoing_packet, ID);
 		}
 	}
 
