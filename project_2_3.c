@@ -44,12 +44,13 @@
 
 
 /*  Variables  */
-uint16_t checksum;					//Variable for checksum
-uint8_t outgoing_packet[12];		//Sending data
-uint8_t incoming_buffer[12];		//Response packet
+uint16_t checksum;						//Variable for checksum
+uint8_t outgoing_packet[12];			//Sending data
+uint8_t incoming_buffer[12];			//Response packet
 uint8_t parameter[4], command[2];
-uint8_t ON_OFF_BACKLIGHT = 0;		//Always off on begining
-static volatile uint8_t stanje = 0;	//Used for keys
+uint8_t ON_OFF_BACKLIGHT = 0;			//Always off on begining
+static volatile uint8_t key = 0;		//Used for keys
+uint8_t status = 0;						// Used for menu status 
 
 
 
@@ -57,59 +58,53 @@ static volatile uint8_t stanje = 0;	//Used for keys
 //    Name:        UART_send_packet
 //    Description: Sending packet via UART to sensor.
 //    Input:       -
-//    Output:      LED blinks when data is sent
+//    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void UART_send_packet(uint8_t outgoing_packet[])
 {
 	uint8_t i;
-	PORTA = 1 << PA4;
-	_delay_ms(250);
-	
-	//Actually sending array via UART to sensor
+
+	/* Actually sending array via UART to sensor */
 	for(i = 0; i < 12; i++)
 	{
 		uart0_putc(outgoing_packet[i]);
 	}
-	
-	PORTA = 0 << PA4;
-	_delay_ms(250);
+ 	_delay_ms(500);
 }
 
 //------------------------------------------------------------------------------
 //    Name:        UART_response_packet
 //    Description: Receive UART packet from GT-511C3 sensor.
 //    Input:       -
-//    Output:      After every receive led blinks, only for checking purpose
+//    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void UART_response_packet(uint8_t incoming_buffer[])
 {
-	uint16_t n_data_plus_error[12]; //16 bit data array for data + error response
+	/* 16 bit data array for data + error response */
+	uint16_t n_data_plus_error[12]; 
 	uint8_t i, n_data[12], n_error_code;
 	
-	PORTA = 1 << PA4;
-	_delay_ms(250);
-	for( i=0; i<12; i++ )    //Input Array | dividing low and high bits and putting data into input array
+	do 
 	{
+		/* Input Array | dividing low and high bits and putting data into input array */
+		for( i=0; i<12; i++ )   
+		{
+			n_data_plus_error[i] = uart0_getc();
 		
-		n_data_plus_error[i] = uart0_getc();
+			/* extract/cast "data" from error+data array -> Lower 8 bits */
+			n_data[i] = (uint8_t)(n_data_plus_error[i] & 0x00FF);
 		
-		// extract/cast "data" from error+data array -> Lower 8 bits
-		n_data[i] = (uint8_t)(n_data_plus_error[i] & 0x00FF);
+			/* extract/cast "error" from error+data array -> higher 8 bits */
+			n_error_code = (uint8_t)((n_data_plus_error[i] & 0xFF00) >> 8);
 		
-		// extract/cast "error" from error+data array -> higher 8 bits
-		n_error_code = (uint8_t)((n_data_plus_error[i] & 0xFF00) >> 8);
+			/* Putting response data into our array */
+			incoming_buffer[i] = n_data[i];	
+		}
 		
-		
-		
-		//Putting response data into our array
-		incoming_buffer[i] = n_data[i];
-		
-		
-	}
-	PORTA = 0 << PA4;
-	_delay_ms(250);
+	} while ( uart0_available() != 0);
+	_delay_ms(500);
 }
 
 
@@ -184,10 +179,10 @@ int calculate_checksum(uint8_t parameter[], uint8_t command[])
 void assemble_data_packet()
 {
 	
-	//Checksum calculation -> outgoing_packet[0] + .... + outgoing_packet[9] = Checksum
+	/* Checksum calculation -> outgoing_packet[0] + .... + outgoing_packet[9] = Checksum */
 	checksum = calculate_checksum(parameter, command);
 	
-	//Data packet which is to be sent by UART to sensor
+	/* Data packet which is to be sent by UART to sensor */
 	outgoing_packet[0] = COMMAND_START_CODE_1;
 	outgoing_packet[1] = COMMAND_START_CODE_2;
 	outgoing_packet[2] = COMMAND_DEVICE_ID_1;
@@ -202,6 +197,19 @@ void assemble_data_packet()
 	outgoing_packet[11] = get_hight_byte(checksum);	
 }
 
+//------------------------------------------------------------------------------
+//    Name:        delete_one_ID
+//    Description: Deletes only 1 ID which is send by parameter
+//    Input:       -
+//    Output:      NACK_INVALID_POS
+//    Misc:		   -
+//------------------------------------------------------------------------------
+// void delete_one_ID(uint8_t ID)
+// {
+// 	
+// }
+
+
 
 //------------------------------------------------------------------------------
 //    Name:        check_enrolled
@@ -212,10 +220,12 @@ void assemble_data_packet()
 //------------------------------------------------------------------------------
 int check_enrolled(uint8_t ID)
 {
+	uint8_t buffer1[20];
+	
 	if( ON_OFF_BACKLIGHT == 0 )
 	{
 		lcd_clrscr();
-		lcd_puts("Press key 3\nFor Backlight");
+		lcd_puts("Turn Backlight \nON with key 3!");
 		return -1;
 	}
 	else
@@ -231,23 +241,26 @@ int check_enrolled(uint8_t ID)
 	
 		/* UART sending */
 		UART_send_packet(outgoing_packet);
-		_delay_ms(1000);
+		_delay_ms(500);
 	
 		/* UART receiving */
 		UART_response_packet(incoming_buffer);
-	
-		/* Checking if my incoming buffer if 0x30 which is ACK_low defined. Need to finish this but it WORKS!*/ 
+		
+		/* Checking if my incoming buffer is 0x30 which is ACK_low defined. Means that ID is already used */ 
 		if( incoming_buffer[8] == ACK_low)
 		{
 			/* Error--> Message output */
 			case_error(incoming_buffer);
 			return 0;
 		}
-		/* Else we are returning which error is received */
+		/* Else we are returning on which ID we are enrolling */
 		else 
-		{
-			/* Error--> Message output */
-			case_error(incoming_buffer);
+		{	
+			lcd_clrscr();
+			lcd_puts("Enrolling on ID =");
+			lcd_gotoxy(0, 1);
+			lcd_puts( itoa( outgoing_packet[4], buffer1, 10 ));
+				
 			return 1;
 		}
 	}
@@ -257,7 +270,7 @@ int check_enrolled(uint8_t ID)
 //    Name:        enroll_start
 //    Description: Start an enrollment
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      NACK_DB_IS_FULL, NACK_INVALID_POS, NACK_ALREADY_USED
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_start(uint8_t ID)
@@ -273,7 +286,7 @@ void enroll_start(uint8_t ID)
 	
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
@@ -286,7 +299,7 @@ void enroll_start(uint8_t ID)
 //    Name:        enroll_1
 //    Description: Make 1st template for an enrollment
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      NACK_ENROLL_FAILED, NACK_BAD_FINGERPRINT
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_1()
@@ -304,7 +317,7 @@ void enroll_1()
 	
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
@@ -317,7 +330,7 @@ void enroll_1()
 //    Name:        enroll_2
 //    Description: Make 2nd template for an enrollment
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      NACK_ENROLL_FAILED, NACK_BAD_FINGERPRINT
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_2()
@@ -335,7 +348,7 @@ void enroll_2()
 	
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
@@ -346,9 +359,10 @@ void enroll_2()
 
 //------------------------------------------------------------------------------
 //    Name:        enroll_3
-//    Description: Make 3rd template for an enrollment, merge three templates into one template, save merged template to the database
+//    Description: Make 3rd template for an enrollment,
+//				   merge them into one template and save to the database.
 //    Input:       -
-//    Output:       Error message ( Still need to check which ones )
+//    Output:      NACK_ENROLL_FAILED, NACK_BAD_FINGERPRINT
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void enroll_3()
@@ -366,7 +380,7 @@ void enroll_3()
 	
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
@@ -380,15 +394,13 @@ void enroll_3()
 	
 	/* Error--> Message output */
 	else case_error(incoming_buffer);
-
-
 }
 
 //------------------------------------------------------------------------------
 //    Name:			is_press_finger
 //    Description:	Check is finger is placed on the sensor
 //    Input:       -
-//    Output:       Error message ( Still need to check which ones )
+//    Output:       
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int is_press_finger()
@@ -396,7 +408,7 @@ int is_press_finger()
 	if( ON_OFF_BACKLIGHT == 0 )
 	{
 		lcd_clrscr();
-		lcd_puts("Press key 3\nFor Backlight");
+		lcd_puts("Turn Backlight \nON with key 3!");
 		return -1;
 	}
 	else
@@ -414,7 +426,7 @@ int is_press_finger()
 	
 		/* UART sending */
 		UART_send_packet(outgoing_packet);
-		_delay_ms(1000);
+		_delay_ms(500);
 	
 		/* UART receiving */
 		UART_response_packet(incoming_buffer);
@@ -428,7 +440,8 @@ int is_press_finger()
 			lcd_clrscr();
 			lcd_puts("Remove finger");
 			return 1;
-		} 
+		}
+		 
 		else return 0;
 	}
 }
@@ -437,7 +450,7 @@ int is_press_finger()
 //    Name:        capture_finger
 //    Description: Captures finger which is pressed onto sensor ( ATM set to capture best quality image )		
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      Finger is not pressed ( Press finger )
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void capture_finger()
@@ -452,7 +465,7 @@ void capture_finger()
 
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 			
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);	
@@ -484,7 +497,7 @@ void ID_identify(uint8_t ID)
 
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
@@ -497,7 +510,7 @@ void ID_identify(uint8_t ID)
 	/* If parameter is 0 then fingerprint is found in database*/ 
 	if(incoming_buffer[5] == 0x00)
 	{
-		lcd_puts("Verified ID");
+		lcd_puts("Welcome!!");
 		/* Servo motor LEFT */
 // 		DDRD = (1 << PD5);
 // 		OCR1A = ICR1 - 53;
@@ -506,7 +519,7 @@ void ID_identify(uint8_t ID)
 	}
 	else
 	{
-		lcd_puts("Finger not found");
+		lcd_puts("Access Denied!!");
 		for(i = 0; i < 200; i++)
 		{
 			/* Speaker , will be used when fingerprint is not found in database.*/
@@ -522,14 +535,13 @@ void ID_identify(uint8_t ID)
 // 		 _delay_ms(100);
 // 		 DDRD |= (0 << PD5);	
 	}
-	
 }
 
 //------------------------------------------------------------------------------
 //    Name:        delete_all
 //    Description: Deletes all fingerprints from database---> Need to implement some sort of security check
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      ACK =  OK, NACK = NACK_DB_IS_EMPTY
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void delete_all()
@@ -547,16 +559,14 @@ void delete_all()
 	
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
 	
 	/* Error--> Message output */
-	case_error(incoming_buffer);
-		
+	case_error(incoming_buffer);	
 }
-
 
 //------------------------------------------------------------------------------
 //    Name:        get_enroll_count
@@ -565,9 +575,9 @@ void delete_all()
 //    Output:      Number of enrolled fingerprints or "The database is empty"
 //    Misc:		   -
 //------------------------------------------------------------------------------
-int get_enroll_count(uint8_t ID)
+void get_enroll_count(uint8_t ID)
 {
-	/* Buffer11[20] is here only for testing purpose */
+	/* Number of enrolled IDs */
 	uint8_t buffer11[20];
 	
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
@@ -583,7 +593,7 @@ int get_enroll_count(uint8_t ID)
 
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);
@@ -601,12 +611,11 @@ int get_enroll_count(uint8_t ID)
 	 	
 }
 
-
 //------------------------------------------------------------------------------
 //    Name:        open
 //    Description: Parameters and command for OPEN function. Used to open connection to sensor.
 //    Input:       -
-//    Output:      Error message ( Still need to check which ones )
+//    Output:      
 //    Misc:		   It's used only once. In main program.
 //------------------------------------------------------------------------------
 void open()
@@ -624,7 +633,7 @@ void open()
 
 	/* UART sending */
 	UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 			
 	/* UART receiving */
 	UART_response_packet(incoming_buffer);	
@@ -643,7 +652,7 @@ void cmosled()
 	command[0] = get_low_byte(CMOSLED);
 	command[1] = get_hight_byte(CMOSLED);
 	
-	/* If LED is OFF then we turn her ON --> Need to implement this code better!!*/ 
+	/* If LED is OFF then we turn it ON */ 
 	if(ON_OFF_BACKLIGHT == 0)
 	{
 		parameter[0] = 0x01;
@@ -651,7 +660,7 @@ void cmosled()
 		lcd_clrscr();
 		lcd_puts("Backlight is ON!");	
 	}
-	/* IF LED is ON we turn her OFF */
+	/* IF LED is ON we turn it OFF */
 	else
 	{
 		parameter[0] = 0x00;
@@ -669,32 +678,28 @@ void cmosled()
 	
 	/* UART sending */
 	 UART_send_packet(outgoing_packet);
-	_delay_ms(1000);
+	_delay_ms(500);
 	 
 	/* UART receiving */
 	 UART_response_packet(incoming_buffer);
 } 
 
-
 //------------------------------------------------------------------------------
 //    Name:        hex_polje_sum
 //    Description: Assembling array of data to be send  
-//    Input:       Key input ( ATM 4 keys )
-//    Output:      1->Enrollment
-//				   2->Delete all fingerprints from database
-//				   3->Returning number of fingerprinsts in database
-//				   4->Checking if fingerprint is in database ( Verification )
+//    Input:       Key input ( ATM 6 keys )
+//    Output:      
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 {
 	
 	/* Depends which button we press */
-	switch (stanje)
-	{
+	switch (key)
+	{		
 		/* Enrolling new fingerprint into database */
-		case 1:
-			stanje = 0;
+		case 2:
+			key = 0;
 			/* Counting number of fingerprints in database */
 			//get_enroll_count(ID);
 			
@@ -712,7 +717,7 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			/* 1st Enrollment */																
 			enroll_1();	
 			/* Wait while finger is removed */																	
-			while( is_press_finger() == 1 ) lcd_puts("Remove finger"); _delay_ms(100);
+			while( is_press_finger() == 1 ) lcd_puts("Remove finger!"); _delay_ms(100);
 			/* Wait while finger is pressed again for 2nd enrollment */	
 			while( is_press_finger() == 0 ) _delay_ms(100);	
 			/* Capture fingerprint in high quality */								
@@ -721,7 +726,7 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			/* 2nd Enrollment */															
 			enroll_2();
 			/* Wait while finger is removed */																		
-			while( is_press_finger() == 1 ) lcd_puts("Remove finger"); _delay_ms(100);
+			while( is_press_finger() == 1 ) lcd_puts("Remove finger!"); _delay_ms(100);
 			/* Wait while finger is pressed again for 3nd enrollment */	
 			while( is_press_finger() == 0 ) _delay_ms(100);	
 			/* Capture fingerprint in high quality */								
@@ -730,22 +735,20 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			/* 3rd Enrollment */																
 			enroll_3();									
 			break;
+	
+		case 3:
+			key = 0;
+			cmosled();		
+			break;	
 		
-		case 2:
-			stanje = 0;
+		case 4:
+			key = 0;
 			get_enroll_count(ID);
 			break;
 			
-		
-		case 3:
-			stanje = 0;
-			/*  Only here for testing purpose will be removed later */ 
-			cmosled();		
-			break;	
-			
 		/* When key 4 is pressed identification of fingerprint will begin */	
-		case 4:
-			stanje = 0;
+		case 5:
+			key = 0;
 			/* Check if LED is OFF */
 			if( is_press_finger() == -1) break;
 			/* Checking if finger is pressed */
@@ -756,14 +759,24 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			ID_identify(ID);
 			break;
 			
-		case 5:
-			stanje = 0;
-			delete_all();
-			break;
+		case 6:
 			
+			key = 0;
+			
+			if(status == 6)
+			{
+				lcd_puts("Uso sam");
+				break;
+			}
+			
+			else 
+			{
+				
+				delete_all();
+				break;
+			}
 	}
 }
-
 
 int main(void)
 {
@@ -772,21 +785,23 @@ int main(void)
 	DDRB &= ~(1 << PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3 | 1 << PB4); 
 	/* Set the bit---> 0 u 1, without touching other bits */
 	PORTB |= (1<< PB0 | 1 << PB1 | 1 << PB2 | 1 <<PB3 | 1 << PB4);
-	/* LED for testing purpose (light up when UART is sending or receiving) */
+	
+	/* Key 6 */
+	DDRC &= ~(1 << PC0);
+	PORTC |= (1 << PC0);
+	
+	/* LED for testing purpose and speaker */
 	DDRA |= (1 << PA4 | 1 << PA5);
 	/* Servo is initially OFF */
 	DDRD |= (0 << PD5);	
 
 	/* Inverted Mode */ 
 	TCCR1A |= 1<<WGM11 | 1<<COM1A1 | 1<<COM1A0;
-	
 	/* Fast PWM mode 14, Prescaler = 256 */ 
 	TCCR1B |= 1<<WGM13 | 1<<WGM12 | 1<<CS12;
 	
 	/* Top of the counter count */
 	ICR1 = 625;
-
-	/**/ 
 	OCR1A = ICR1 - 65;
 
 	/* UART initialization */ 
@@ -795,13 +810,13 @@ int main(void)
 	/* Getting LCD ready */
 	lcd_init(LCD_DISP_ON); 
 	lcd_clrscr();
-	lcd_puts("LCD is ready!!");
-	
+	lcd_puts("Sensor is ready!");
 
 	/* ID number for fingerprint count */
-	uint8_t ID = 0;						
+	uint8_t ID = 0;
+	/* Used for menu status */
+	uint8_t status = 0;						
 
-	
 	/* Enabling global interrupts */
     sei();
 	
@@ -810,71 +825,121 @@ int main(void)
 	
 	while(1)
     {
+		if(bit_is_clear(PINC, PC0))
+		{
+			key = 1;
+			status++;
+			status = status%7;		
+		}
 		
 		if(bit_is_clear(PINB, PB0))
 		{
-			stanje = 1;		
+			key = 2;	
 		}
 		
 		if(bit_is_clear(PINB, PB1))
 		{
-			stanje = 2;	
+			key = 3;		
 		}
 		
 		if(bit_is_clear(PINB, PB2))
 		{
-			stanje = 3;		
+			key = 4;		
 		}
 		
 		if(bit_is_clear(PINB, PB3))
 		{
-			stanje = 4;		
+			key = 5;
 		}
 		
 		if(bit_is_clear(PINB, PB4))
 		{
-			stanje = 5;
+			key = 6;
 		}
-               
-        if(stanje == 1)
+		/* Using key 1 for switching */
+        if(key == 1)
 		{
+			if (status == 1)
+			{
+				lcd_clrscr();
+				lcd_puts("Welcome to Menu \nfor GT-511C3");
+				_delay_ms(250);
+			}
 			
-			lcd_clrscr();
-			lcd_puts("Prvo stanje");
-			hex_polje_sum(outgoing_packet, ID);
-		 }
-		 
-		 if(stanje == 2)
-		 {
+			else if(status == 2)
+			{
+				lcd_clrscr();
+				lcd_puts("Press key 2 for \nEnrollment");
+				_delay_ms(250);	
+			}
 			
-			lcd_clrscr();
-			lcd_puts("Drugo stanje");
-			hex_polje_sum(outgoing_packet, ID);
+			else if(status == 3)
+			{
+				lcd_clrscr();
+				lcd_puts("Press key 3 for \nBacklight ON/OFF");
+				_delay_ms(250);
+			}
 			
+			else if(status == 4)
+			{
+				lcd_clrscr();
+				lcd_puts("Press key 4 for \nEnroll Count");
+				_delay_ms(250);
+			}
+			
+			else if(status == 5)
+			{
+				lcd_clrscr();
+				lcd_puts("Press key 5 for \nIdentification");
+				_delay_ms(250);
+			}
+			
+			else if(status == 6)
+			{
+				lcd_clrscr();
+				lcd_puts("Press key 6 for \nDeleting Database");
+				_delay_ms(250);
+			}
 		}
 		 
-		if(stanje == 3)
+		if(key == 2)
 		{
 			lcd_clrscr();
-			lcd_puts("Trece stanje");
-			
+			lcd_puts("Enrolling in \nProcess");
+			hex_polje_sum(outgoing_packet, ID);
+		}
+		 
+		if(key == 3)
+		{
+			lcd_clrscr();
 			hex_polje_sum(outgoing_packet, ID);	
 		}
 		
-		if(stanje == 4)
+		if(key == 4)
 		{
 			lcd_clrscr();
-			lcd_puts("Cetvrto stanje");
+			lcd_puts("Enroll count");
 			hex_polje_sum(outgoing_packet, ID);
 		}
 		
-		if(stanje == 5)
+		if(key == 5)
 		{
 			lcd_clrscr();
-			lcd_puts("Peto stanje");
-			
+			lcd_puts("Identification \nIn Process");
+			hex_polje_sum(outgoing_packet, ID);
+		}
+		/* Used for testing purpose */
+		if((key == 6) && (status != 6))
+		{
+			lcd_clrscr();
+			lcd_puts("Deleting \nDatabase");
+			hex_polje_sum(outgoing_packet, ID);
+		}
+		/* Used for testing purpose */
+		if((status == 6) && (key == 6))
+		{
+			lcd_clrscr();
 			hex_polje_sum(outgoing_packet, ID);
 		}
 	}
-
 }

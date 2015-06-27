@@ -12,9 +12,6 @@
 #include "GT_511C3_lib.h"
 
 
-
-
-
 //------------------------------------------------------------------------------
 //    Name:        get_low_byte
 //    Description: Dividing 16_bit variable (cmd) to it's lower 8 bit value
@@ -83,7 +80,7 @@ void case_error(uint8_t incoming_buffer[])
 			case 0x0F:  lcd_puts("Device error"); break;
 			case 0x10:  lcd_puts("The capturing \nis canceled"); break;
 			case 0x11:  lcd_puts("Invalid parameter"); break;
-			case 0x12:  lcd_puts("Press finger"); break;
+			case 0x12:  lcd_puts("Press finger!"); break;
 		}
 	}
 	
