@@ -4,19 +4,17 @@
  * Created: 28/05/2015 18:49:02
  *  Author: Ivan
  *
- *FUSE bits set: High : 0xC9
- *				 Low  : 0xFF
+ *Atmega32 with touch sensor GT-511C3
+ *****************************************************
+ *Fuse bits set:
+ *				High : 0xC9
+ *				Low  : 0xFF
  *
  *CKSEL3,2,1,0	= 1
  *SUT2,1		= 1
  *CKOPT			= 0
- *
- *
- *
- *
- *To DO: Return UART send and receive to main file. Divide function for sensor to lib.h and lib.c
- *		 Implement Delete 1 ID from database and make menu with LCD. (Probably will be 6 keys)	
- */ 
+ *****************************************************
+*/
 
 /* Clock */
 #ifndef F_CPU
@@ -57,7 +55,7 @@ uint8_t status = 0;						// Used for menu status
 //------------------------------------------------------------------------------
 //    Name:        UART_send_packet
 //    Description: Sending packet via UART to sensor.
-//    Input:       -
+//    Input:       outgoing_packet--> array which is send via uart
 //    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
@@ -76,7 +74,7 @@ void UART_send_packet(uint8_t outgoing_packet[])
 //------------------------------------------------------------------------------
 //    Name:        UART_response_packet
 //    Description: Receive UART packet from GT-511C3 sensor.
-//    Input:       -
+//    Input:       incoming_buffer--> array for incoming data
 //    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
@@ -107,8 +105,6 @@ void UART_response_packet(uint8_t incoming_buffer[])
 	_delay_ms(500);
 }
 
-
-
 //------------------------------------------------------------------------------
 //    Name:        parameter_from_int
 //    Description: Integer to hex for sending packages.
@@ -128,7 +124,7 @@ void parameter_from_int(uint8_t i)
 //    Name:        int_from_parameter
 //    Description: Hex to integer for receive packages.
 //    Input:       -
-//    Output:      -
+//    Output:      Returns parameter
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int int_from_parameter()
@@ -147,9 +143,8 @@ int int_from_parameter()
 //------------------------------------------------------------------------------
 //    Name:        calculate_checksum
 //    Description: Summing first 10 bytes of package which is to be send via UART to sensor as lower and higher checksum
-//					Need to implement receive calculate_checksum!!!!
-//    Input:       -
-//    Output:      -
+//    Input:       Parameter of given command and command
+//    Output:      Returns checksum
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int calculate_checksum(uint8_t parameter[], uint8_t command[])
@@ -214,7 +209,7 @@ void assemble_data_packet()
 //------------------------------------------------------------------------------
 //    Name:        check_enrolled
 //    Description: Check whether the specified ID is already enrolled if it is then we search for empty one.
-//    Input:       -
+//    Input:       ID--> of user to be enrolled
 //    Output:      ACK( Already used ) or NACK( Not used or ID is not between 0-199 )
 //    Misc:		   -
 //------------------------------------------------------------------------------
@@ -269,7 +264,7 @@ int check_enrolled(uint8_t ID)
 //------------------------------------------------------------------------------
 //    Name:        enroll_start
 //    Description: Start an enrollment
-//    Input:       -
+//    Input:       ID--> number of next enrolled user
 //    Output:      NACK_DB_IS_FULL, NACK_INVALID_POS, NACK_ALREADY_USED
 //    Misc:		   -
 //------------------------------------------------------------------------------
@@ -360,7 +355,7 @@ void enroll_2()
 //------------------------------------------------------------------------------
 //    Name:        enroll_3
 //    Description: Make 3rd template for an enrollment,
-//				   merge them into one template and save to the database.
+//				   Merge them into one template and save to the database.
 //    Input:       -
 //    Output:      NACK_ENROLL_FAILED, NACK_BAD_FINGERPRINT
 //    Misc:		   -
@@ -400,7 +395,9 @@ void enroll_3()
 //    Name:			is_press_finger
 //    Description:	Check is finger is placed on the sensor
 //    Input:       -
-//    Output:       
+//    Output:      -1-->If backlight is OFF
+//					0-->If finger is not yet placed
+//					1-->If finger is placed/read and needs to be removed
 //    Misc:		   -
 //------------------------------------------------------------------------------
 int is_press_finger()
@@ -477,7 +474,7 @@ void capture_finger()
 //------------------------------------------------------------------------------
 //    Name:        ID_identify
 //    Description: Checks if fingerprint is already in database
-//    Input:       -
+//    Input:       ID
 //    Output:      Verified ID ( if fingerprint is verified ) and "Finger not found"
 //    Misc:		   -
 //------------------------------------------------------------------------------
@@ -512,10 +509,10 @@ void ID_identify(uint8_t ID)
 	{
 		lcd_puts("Welcome!!");
 		/* Servo motor LEFT */
-// 		DDRD = (1 << PD5);
-// 		OCR1A = ICR1 - 53;
-// 		_delay_ms(100);
-// 		DDRD |= (0 << PD5);	
+		//DDRD = (1 << PD5);
+		//OCR1A = ICR1 - 53;
+		//_delay_ms(100);
+		//DDRD |= (0 << PD5);	
 	}
 	else
 	{
@@ -523,10 +520,10 @@ void ID_identify(uint8_t ID)
 		for(i = 0; i < 200; i++)
 		{
 			/* Speaker , will be used when fingerprint is not found in database.*/
-			PORTA = 0 << PA5;
-			_delay_ms(1);
-			PORTA = 1 << PA5;
-			_delay_ms(1);
+ 			PORTA = 0 << PA5;
+ 			_delay_ms(1);
+ 			PORTA = 1 << PA5;
+ 			_delay_ms(1);
 		}
 
 		 /* Servo motor RIGHT */
@@ -539,7 +536,7 @@ void ID_identify(uint8_t ID)
 
 //------------------------------------------------------------------------------
 //    Name:        delete_all
-//    Description: Deletes all fingerprints from database---> Need to implement some sort of security check
+//    Description: Deletes all fingerprints from database
 //    Input:       -
 //    Output:      ACK =  OK, NACK = NACK_DB_IS_EMPTY
 //    Misc:		   -
@@ -571,7 +568,7 @@ void delete_all()
 //------------------------------------------------------------------------------
 //    Name:        get_enroll_count
 //    Description: Returns number of fingerprints in database ( still need to finish )
-//    Input:       -
+//    Input:       ID
 //    Output:      Number of enrolled fingerprints or "The database is empty"
 //    Misc:		   -
 //------------------------------------------------------------------------------
@@ -613,7 +610,7 @@ void get_enroll_count(uint8_t ID)
 
 //------------------------------------------------------------------------------
 //    Name:        open
-//    Description: Parameters and command for OPEN function. Used to open connection to sensor.
+//    Description: Used to open connection with GT-511C3
 //    Input:       -
 //    Output:      
 //    Misc:		   It's used only once. In main program.
@@ -641,9 +638,9 @@ void open()
 
 //------------------------------------------------------------------------------
 //    Name:			cmosled       
-//    Description:	Parameters and commands for cmosled command
+//    Description:	Turns ON or OFF backlight. Initially it's always OFF
 //    Input:       -
-//    Output:       LED ON or OFF, Initially it's always OFF
+//    Output:       Backlight is ON/OFF!
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void cmosled()
@@ -687,8 +684,8 @@ void cmosled()
 //------------------------------------------------------------------------------
 //    Name:        hex_polje_sum
 //    Description: Assembling array of data to be send  
-//    Input:       Key input ( ATM 6 keys )
-//    Output:      
+//    Input:       Key input ( ATM 6 keys ), ID
+//    Output:      -
 //    Misc:		   -
 //------------------------------------------------------------------------------
 void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
@@ -738,11 +735,13 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 	
 		case 3:
 			key = 0;
+			/* Turns backlight ON or OFF */
 			cmosled();		
 			break;	
 		
 		case 4:
 			key = 0;
+			/* Returns number of enrolled fingerprints */
 			get_enroll_count(ID);
 			break;
 			
@@ -762,7 +761,7 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 		case 6:
 			
 			key = 0;
-			
+			/* Testing */
 			if(status == 6)
 			{
 				lcd_puts("Uso sam");
@@ -771,7 +770,7 @@ void hex_polje_sum(uint8_t outgoing_packet[], uint8_t ID)
 			
 			else 
 			{
-				
+				/* Deletes all records from database */
 				delete_all();
 				break;
 			}
@@ -825,9 +824,11 @@ int main(void)
 	
 	while(1)
     {
+		
 		if(bit_is_clear(PINC, PC0))
 		{
 			key = 1;
+			/* Used for 1st key (Menu) */
 			status++;
 			status = status%7;		
 		}
@@ -856,6 +857,7 @@ int main(void)
 		{
 			key = 6;
 		}
+		
 		/* Using key 1 for switching */
         if(key == 1)
 		{
