@@ -35,7 +35,7 @@ int get_low_byte(uint16_t cmd)
 //    Misc:		   -
 //------------------------------------------------------------------------------
 
-int get_hight_byte(uint16_t cmd)
+int get_high_byte(uint16_t cmd)
 {
 	uint8_t higher_byte = 0;
 	return higher_byte = (cmd >> 8) & 0x00FF;
