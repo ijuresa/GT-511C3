@@ -189,7 +189,7 @@ void assemble_data_packet()
 	outgoing_packet[8] = command[0];
 	outgoing_packet[9] = command[1];
 	outgoing_packet[10] = get_low_byte(checksum);
-	outgoing_packet[11] = get_hight_byte(checksum);	
+	outgoing_packet[11] = get_high_byte(checksum);	
 }
 
 //------------------------------------------------------------------------------
@@ -227,7 +227,7 @@ int check_enrolled(uint8_t ID)
 	{
 		/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 		command[0] = get_low_byte(CHECK_ENROLLED);
-		command[1] = get_hight_byte(CHECK_ENROLLED);
+		command[1] = get_high_byte(CHECK_ENROLLED);
 	
 		/* Sending current ID to function which transforms integer to hex and puts it into parameter[3,2,1,0] package */
 		parameter_from_int(ID);
@@ -272,7 +272,7 @@ void enroll_start(uint8_t ID)
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ENROLL_START);
-	command[1] = get_hight_byte(ENROLL_START);
+	command[1] = get_high_byte(ENROLL_START);
 	
 	/* Sending current ID to function which transforms integer to hex and puts it into parameter[3,2,1,0] package */
 	parameter_from_int(ID);
@@ -301,7 +301,7 @@ void enroll_1()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ENROLL_1);
-	command[1] = get_hight_byte(ENROLL_1);
+	command[1] = get_high_byte(ENROLL_1);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -332,7 +332,7 @@ void enroll_2()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ENROLL_2);
-	command[1] = get_hight_byte(ENROLL_2);
+	command[1] = get_high_byte(ENROLL_2);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -364,7 +364,7 @@ void enroll_3()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ENROLL_3);
-	command[1] = get_hight_byte(ENROLL_3);
+	command[1] = get_high_byte(ENROLL_3);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -412,7 +412,7 @@ int is_press_finger()
 	{
 		/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 		command[0] = get_low_byte(IS_PRESS_FINGER);
-		command[1] = get_hight_byte(IS_PRESS_FINGER);
+		command[1] = get_high_byte(IS_PRESS_FINGER);
 	
 		parameter[0] = 0x00;
 		parameter[1] = 0x00;
@@ -454,7 +454,7 @@ void capture_finger()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(CAPTURE_FINGER);
-	command[1] = get_hight_byte(CAPTURE_FINGER);
+	command[1] = get_high_byte(CAPTURE_FINGER);
 	
 	parameter_from_int(1); //For best image, slow
 	
@@ -483,7 +483,7 @@ void ID_identify(uint8_t ID)
 	uint8_t i;
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(ID_IDENTIFY);
-	command[1] = get_hight_byte(ID_IDENTIFY);
+	command[1] = get_high_byte(ID_IDENTIFY);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -545,7 +545,7 @@ void delete_all()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(DELETE_ALL);
-	command[1] = get_hight_byte(DELETE_ALL);
+	command[1] = get_high_byte(DELETE_ALL);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -579,7 +579,7 @@ void get_enroll_count(uint8_t ID)
 	
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(GET_ENROLL_COUNT);
-	command[1] = get_hight_byte(GET_ENROLL_COUNT);
+	command[1] = get_high_byte(GET_ENROLL_COUNT);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -619,7 +619,7 @@ void open()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(OPEN);
-	command[1] = get_hight_byte(OPEN);
+	command[1] = get_high_byte(OPEN);
 	
 	parameter[0] = 0x00;
 	parameter[1] = 0x00;
@@ -647,7 +647,7 @@ void cmosled()
 {
 	/* Dividing lower byte and higher byte from 16bit command to fit into 1 UART message */
 	command[0] = get_low_byte(CMOSLED);
-	command[1] = get_hight_byte(CMOSLED);
+	command[1] = get_high_byte(CMOSLED);
 	
 	/* If LED is OFF then we turn it ON */ 
 	if(ON_OFF_BACKLIGHT == 0)
